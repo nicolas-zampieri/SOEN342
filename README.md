@@ -3,8 +3,8 @@ SOEN 342 group project 2025
 
 Members:
 
-  Nicolas Zampieri 40275624
+    Nicolas Zampieri 40275624
 
-  Luca Ieraci
+    Luca Ieraci
 
-  Marc Fadous
+    Marc Fadous
