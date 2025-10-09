@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EU Rail Search — Single Page</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg:#0b1020; --panel:#121a33; --ink:#e8ecff; --muted:#aab1d9; --accent:#90b4ff; --accent2:#7bffca; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;background:linear-gradient(180deg,#0b1020 0%, #0e1330 100%);color:var(--ink);}
+    header{padding:28px 20px 10px;display:flex;justify-content:center}
+    .wrap{width:min(1200px,92vw)}
+    h1{margin:0 0 12px;font-weight:700;letter-spacing:.2px;font-size: clamp(20px, 3vw, 28px)}
+    p.lead{margin:.2rem 0 1rem;color:var(--muted)}
+    .card{background:linear-gradient(180deg,#0e1735,#0d1531);border:1px solid #2a376b; box-shadow:0 10px 30px rgba(0,0,0,.45); border-radius:20px; padding:18px}
+    .grid{display:grid;gap:12px}
+    .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    label{display:block;font-size:12px;color:var(--muted);margin:0 0 6px}
+    input, select, button, textarea{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #314079;background:#0c1430;color:var(--ink);outline:none}
+    input::placeholder{color:#97a0d2}
+    .row{display:grid;grid-template-columns: 1fr 1fr; gap:12px}
+    .row3{display:grid;grid-template-columns: 1fr 1fr 1fr; gap:12px}
+    .controls{display:flex;gap:10px;flex-wrap:wrap}
+    .controls > *{flex:1 1 180px}
+    button.primary{background:linear-gradient(180deg,#2345ff,#1737dc);border:0;color:white;font-weight:600}
+    button.secondary{background:#13204d;border:1px solid #2b3f8f;color:var(--ink)}
+    .hint{font-size:12px;color:var(--muted)}
+    .table{margin-top:14px;border-collapse:collapse;width:100%;font-size:14px}
+    .table th,.table td{border-bottom:1px solid #263771; padding:10px 8px; vertical-align:top}
+    .table th{color:#a9b6ff;text-align:left; position:sticky; top:0; background:#0f1634}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #3b4e9f;font-size:12px;color:#cfe0ff}
+    .muted{color:var(--muted)}
+    .path{white-space:normal}
+    .nowrap{white-space:nowrap}
+    .flex{display:flex;gap:8px;align-items:center}
+    .footer{margin:18px 0 8px;color:var(--muted);font-size:12px}
+    .pill{padding:6px 10px;border-radius:999px;background:#111a3a;border:1px solid #30408b}
+    .split{display:grid;grid-template-columns: 1.4fr .6fr; gap:14px}
+    .sticky{position:sticky; top:10px}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    .error{color:#ff9aa2}
+    .ok{color:#9cffad}
+    .kpi{display:grid;grid-template-columns: repeat(4,minmax(0,1fr)); gap:10px;margin:10px 0}
+    .kpi .card{padding:12px}
+    .kpi .num{font-size:20px;font-weight:700}
+    @media (max-width: 980px){.split{grid-template-columns:1fr}.kpi{grid-template-columns: repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>EU Rail Search</h1>
+      <p class="lead">Upload <code>eu_rail_network.csv</code>, set filters, and find direct or connected itineraries (up to 2 stops).</p>
+    </div>
+  </header>
+
+  <main class="wrap split">
+    <section class="card sticky">
+      <div class="grid">
+        <div>
+          <label for="csv">CSV File</label>
+          <input id="csv" type="file" accept=".csv" />
+          <div class="hint">Expected headers: Route ID, Departure City, Arrival City, Departure Time, Arrival Time, Train Type, Days of Operation, First Class ticket rate (in euro), Second Class ticket rate (in euro)</div>
+        </div>
+      </div>
+
+      <div class="kpi">
+        <div class="card"><div class="muted">Routes Loaded</div><div id="kpi-routes" class="num">0</div></div>
+        <div class="card"><div class="muted">Cities</div><div id="kpi-cities" class="num">0</div></div>
+        <div class="card"><div class="muted">Direct A→B</div><div id="kpi-direct" class="num">0</div></div>
+        <div class="card"><div class="muted">Results</div><div id="kpi-results" class="num">0</div></div>
+      </div>
+
+      <div class="grid cols-3">
+        <div>
+          <label for="from">From</label>
+          <input id="from" placeholder="e.g., Paris" />
+        </div>
+        <div>
+          <label for="to">To</label>
+          <input id="to" placeholder="e.g., Berlin" />
+        </div>
+        <div>
+          <label for="traintype">Train Type</label>
+          <input id="traintype" placeholder="e.g., TGV, IC" />
+        </div>
+      </div>
+
+      <div class="grid cols-4">
+        <div>
+          <label for="days">Days (comma‑sep)</label>
+          <input id="days" placeholder="Mon,Wed,Fri" />
+        </div>
+        <div>
+          <label for="depfrom">Dep from</label>
+          <input id="depfrom" placeholder="HH:MM" />
+        </div>
+        <div>
+          <label for="depto">Dep to</label>
+          <input id="depto" placeholder="HH:MM" />
+        </div>
+        <div>
+          <label for="class">Class</label>
+          <select id="class">
+            <option value="second" selected>Second</option>
+            <option value="first">First</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid cols-4">
+        <div>
+          <label for="price1">Max First‑Class (per leg)</label>
+          <input id="price1" type="number" min="0" step="0.01" />
+        </div>
+        <div>
+          <label for="price2">Max Second‑Class (per leg)</label>
+          <input id="price2" type="number" min="0" step="0.01" />
+        </div>
+        <div>
+          <label for="maxstops">Max Stops</label>
+          <select id="maxstops">
+            <option value="0">0 (direct)</option>
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+          </select>
+        </div>
+        <div>
+          <label for="minxfer">Min Transfer (min)</label>
+          <input id="minxfer" type="number" min="0" value="10" />
+        </div>
+      </div>
+
+      <div class="controls" style="margin-top:8px">
+        <button id="btn-search" class="primary">Search</button>
+        <button id="btn-reset" class="secondary">Reset</button>
+        <select id="sort" class="pill" style="max-width:220px">
+          <option value="duration" selected>Sort: Duration</option>
+          <option value="price">Sort: Price</option>
+        </select>
+        <button id="btn-export" class="secondary">Export Results CSV</button>
+      </div>
+      <div id="msg" class="hint" style="margin-top:8px"></div>
+    </section>
+
+    <section class="card">
+      <div class="flex" style="justify-content:space-between; align-items:center">
+        <h2 style="margin:0;font-size:18px">Results</h2>
+        <div class="muted" id="summary"></div>
+      </div>
+      <div style="overflow:auto; max-height:70vh; margin-top:10px">
+        <table class="table" id="results">
+          <thead>
+            <tr>
+              <th>Stops</th>
+              <th>Total Duration</th>
+              <th>Price (chosen class)</th>
+              <th>Transfers</th>
+              <th>Path</th>
+              <th>Legs</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Papa Parse for robust CSV loading (tiny, CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+    const DAY_ALIASES = { mon:'Mon', monday:'Mon', tue:'Tue', tuesday:'Tue', wed:'Wed', wednesday:'Wed', thu:'Thu', thursday:'Thu', fri:'Fri', friday:'Fri', sat:'Sat', saturday:'Sat', sun:'Sun', sunday:'Sun'};
+
+    function parseTime(s){
+      s = (s||'').toString().trim();
+      if(!s) throw new Error('time empty');
+      const fmts = [/^(\d{1,2}):(\d{2})$/, /^(\d{1,2})\.(\d{2})$/, /^(\d{1,2})(\d{2})$/];
+      for(const re of fmts){
+        const m = s.match(re);
+        if(m){
+          const h = parseInt(m[1],10), mm = parseInt(m[2],10);
+          if(h>=0 && h<24 && mm>=0 && mm<60) return {h, m:mm};
+        }
+      }
+      throw new Error('Unrecognized time: '+s);
+    }
+    function minutesBetween(t1,t2){
+      let a = t1.h*60+t1.m, b = t2.h*60+t2.m;
+      if(b < a) b += 1440; // wrap to next day
+      return b - a;
+    }
+    function legDuration(dep,arr){ return minutesBetween(dep,arr); }
+    function formatHM(mins){ const h=Math.floor(mins/60), m=mins%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`; }
+    function parseDays(s){
+      if(!s) return new Set();
+      const parts = s.replaceAll('/',',').split(',').map(x=>x.trim()).filter(Boolean);
+      return new Set(parts.map(p=>{const k=p.toLowerCase().replace(/[^a-z]/g,''); return DAY_ALIASES[k] || (p.slice(0,3).charAt(0).toUpperCase()+p.slice(1,3).toLowerCase());}));
+    }
+
+    function normalizeHeaders(hdrs){
+      // Map common header variants to canonical names
+      const lower = Object.fromEntries(hdrs.map(h=>[h.toLowerCase().trim(), h]));
+      function get(...names){
+        for(const nm of names){ if(lower[nm.toLowerCase()]) return lower[nm.toLowerCase()]; }
+        return undefined;
+      }
+      return {
+        route_id: get('route id','route_id','id'),
+        dep_city: get('departure city','from','departure'),
+        arr_city: get('arrival city','to','arrival'),
+        dep_time: get('departure time','dep_time','depart'),
+        arr_time: get('arrival time','arr_time','arrive'),
+        train_type: get('train type','train','type'),
+        days: get('days of operation','days','operation days'),
+        price_first: get('first class ticket rate (in euro)','price_first','first class'),
+        price_second: get('second class ticket rate (in euro)','price_second','second class'),
+      };
+    }
+
+    let ROUTES = [];
+
+    function loadCSV(file){
+      return new Promise((resolve,reject)=>{
+        Papa.parse(file,{
+          header:true, dynamicTyping:false, skipEmptyLines:true,
+          complete: (res)=>{
+            try{
+              const map = normalizeHeaders(res.meta.fields||[]);
+              const rows = res.data.map((row,i)=>{
+                try{
+                  const depT = parseTime(row[map.dep_time]);
+                  const arrT = parseTime(row[map.arr_time]);
+                  return {
+                    route_id: String(row[map.route_id]??`row-${i}`),
+                    dep_city: String(row[map.dep_city]||'').trim(),
+                    arr_city: String(row[map.arr_city]||'').trim(),
+                    dep_time: depT,
+                    arr_time: arrT,
+                    train_type: String(row[map.train_type]||'').trim(),
+                    days: parseDays(String(row[map.days]||'')),
+                    price_first: parseFloat(String(row[map.price_first]||'0').replace(',','.'))||0,
+                    price_second: parseFloat(String(row[map.price_second]||'0').replace(',','.'))||0,
+                    duration: legDuration(depT, arrT),
+                  };
+                }catch(e){
+                  console.warn('Skipping row', i, e);
+                  return null;
+                }
+              }).filter(Boolean);
+              resolve(rows);
+            }catch(err){ reject(err); }
+          },
+          error: (err)=>reject(err)
+        });
+      });
+    }
+
+    function filterRoutes(routes, q){
+      // IMPORTANT: Do NOT filter by dep_city/arr_city here, or we'll lose intermediate legs
+      // needed for 1- and 2-stop connections. We only apply generic filters here.
+      const type = q.train_type?.toLowerCase()||null;
+      const daySet = q.days && q.days.size? q.days : null;
+      const dtf = q.dep_from; const dtt = q.dep_to;
+      const max1 = q.max_price_first, max2=q.max_price_second;
+      return routes.filter(r=>{
+        if(type && !r.train_type.toLowerCase().includes(type)) return false;
+        if(daySet){ const overlap=[...daySet].some(d=>r.days.has(d)); if(!overlap) return false; }
+        if(dtf){
+          const diff=minutesBetween(dtf, r.dep_time); // 0..1439 relative to dtf
+          const dmax = dtt? minutesBetween(dtf, dtt) : null;
+          if(dmax!==null){ if(!(0<=diff && diff<=dmax)) return false; }
+        }
+        if(max1!=null && r.price_first>max1) return false;
+        if(max2!=null && r.price_second>max2) return false;
+        return true;
+      });
+    }
+
+    function groupByDep(routes){
+      const m = new Map();
+      for(const r of routes){
+        const k = r.dep_city.toLowerCase();
+        if(!m.has(k)) m.set(k,[]);
+        m.get(k).push(r);
+      }
+      return m;
+    }
+
+    function findItineraries(routes, depCity, arrCity, maxStops=2, minTransfer=10){
+      const byDep = groupByDep(routes);
+      const results=[];
+      const depKey = (depCity||'').toLowerCase();
+      const target = (arrCity||'').toLowerCase();
+
+      const mins = (t)=> t.h*60 + t.m; // minutes since midnight (no wrap)
+
+      function addIt(legs){
+        const transfers=[];
+        for(let i=0;i<legs.length-1;i++) transfers.push(mins(legs[i+1].dep_time) - mins(legs[i].arr_time));
+        results.push({legs, transfers});
+      }
+
+      // 0 stops (direct)
+      for(const r of (byDep.get(depKey)||[])){
+        if(r.arr_city.toLowerCase()===target){
+          addIt([r]);
+        }
+      }
+
+      // 1 stop: A -> X -> B (no cycles, same-day time monotonicity)
+      if(maxStops>=1){
+        for(const r1 of (byDep.get(depKey)||[])){
+          const midKey1 = r1.arr_city.toLowerCase();
+          if(midKey1===depKey) continue; // avoid returning to origin immediately
+          for(const r2 of (byDep.get(midKey1)||[])){
+            if(r2.arr_city.toLowerCase()!==target) continue;
+            // Same-day only: next departure must be at/after previous arrival (no overnight wrap)
+            if(mins(r2.dep_time) < mins(r1.arr_time)) continue;
+            const t1 = mins(r2.dep_time) - mins(r1.arr_time);
+            if(t1 < minTransfer) continue;
+            addIt([r1,r2]);
+          }
+        }
+      }
+
+      // 2 stops: A -> X -> Y -> B (no cycles, same-day time monotonicity)
+      if(maxStops>=2){
+        for(const r1 of (byDep.get(depKey)||[])){
+          const midKey1 = r1.arr_city.toLowerCase();
+          if(midKey1===depKey) continue; // avoid trivial cycle
+          for(const r2 of (byDep.get(midKey1)||[])){
+            if(mins(r2.dep_time) < mins(r1.arr_time)) continue; // same-day monotonicity
+            const t1 = mins(r2.dep_time) - mins(r1.arr_time);
+            if(t1 < minTransfer) continue;
+            const midKey2 = r2.arr_city.toLowerCase();
+            // prevent cycles: cannot revisit origin or previous stop
+            if(midKey2===depKey || midKey2===midKey1) continue;
+            for(const r3 of (byDep.get(midKey2)||[])){
+              if(r3.arr_city.toLowerCase()!==target) continue;
+              if(mins(r3.dep_time) < mins(r2.arr_time)) continue; // same-day monotonicity
+              const t2 = mins(r3.dep_time) - mins(r2.arr_time);
+              if(t2 < minTransfer) continue;
+              addIt([r1,r2,r3]);
+            }
+          }
+        }
+      }
+
+      // Deduplicate itineraries by their route sequence
+      const seen = new Set();
+      const dedup = [];
+      for(const it of results){
+        const key = it.legs.map(l=>l.route_id).join('>');
+        if(!seen.has(key)){ seen.add(key); dedup.push(it); }
+      }
+      return dedup;
+    }
+
+    function totalDuration(it){
+      const legs = it.legs.reduce((a,l)=>a + l.duration, 0);
+      const xfers = it.transfers.reduce((a,b)=>a+b,0);
+      return legs + xfers;
+    }
+    function price(it, cls){
+      return it.legs.reduce((a,l)=> a + (cls==='first'? l.price_first : l.price_second), 0);
+    }
+
+    function render(itins, cls){
+      const tbody = document.querySelector('#results tbody');
+      tbody.innerHTML = '';
+      for(const it of itins){
+        const stops = Math.max(0, it.legs.length-1);
+        const path = [...it.legs.map(l=>`${l.dep_city}(${String(l.dep_time.h).padStart(2,'0')}:${String(l.dep_time.m).padStart(2,'0')})`), `${it.legs.at(-1).arr_city}(${String(it.legs.at(-1).arr_time.h).padStart(2,'0')}:${String(it.legs.at(-1).arr_time.m).padStart(2,'0')})`].join(' → ');
+        const legs = it.legs.map((l,i)=>`[${i+1}] ${l.dep_city}→${l.arr_city} ${String(l.dep_time.h).padStart(2,'0')}:${String(l.dep_time.m).padStart(2,'0')}–${String(l.arr_time.h).padStart(2,'0')}:${String(l.arr_time.m).padStart(2,'0')} (${formatHM(l.duration)})`).join(' | ');
+        const transfers = it.transfers.length? it.transfers.map(formatHM).join(', '): '—';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="nowrap"><span class="badge">${stops}</span></td>
+          <td class="nowrap">${formatHM(totalDuration(it))}</td>
+          <td class="nowrap">€${price(it, cls).toFixed(2)}</td>
+          <td class="nowrap">${transfers}</td>
+          <td class="path">${path}</td>
+          <td>${legs}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+      document.getElementById('kpi-results').textContent = itins.length;
+    }
+
+    function exportCSV(itins, cls){
+      const rows = itins.map(it=>({
+        stops: Math.max(0, it.legs.length-1),
+        total_duration: formatHM(totalDuration(it)),
+        price: price(it, cls).toFixed(2),
+        transfers: it.transfers.length? it.transfers.map(formatHM).join(' / '): '',
+        path: [...it.legs.map(l=>`${l.dep_city}(${String(l.dep_time.h).padStart(2,'0')}:${String(l.dep_time.m).padStart(2,'0')})`), `${it.legs.at(-1).arr_city}(${String(it.legs.at(-1).arr_time.h).padStart(2,'0')}:${String(it.legs.at(-1).arr_time.m).padStart(2,'0')})`].join(' -> '),
+        legs: it.legs.map((l,i)=>`[${i+1}] ${l.dep_city}->${l.arr_city} ${String(l.dep_time.h).padStart(2,'0')}:${String(l.dep_time.m).padStart(2,'0')}–${String(l.arr_time.h).padStart(2,'0')}:${String(l.arr_time.m).padStart(2,'0')} (${formatHM(l.duration)})`).join(' | '),
+      }));
+      const csv = Papa.unparse(rows);
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'rail_results.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+
+    // UI bindings
+    const els = {
+      file: document.getElementById('csv'),
+      from: document.getElementById('from'),
+      to: document.getElementById('to'),
+      type: document.getElementById('traintype'),
+      days: document.getElementById('days'),
+      depFrom: document.getElementById('depfrom'),
+      depTo: document.getElementById('depto'),
+      cls: document.getElementById('class'),
+      maxStops: document.getElementById('maxstops'),
+      minXfer: document.getElementById('minxfer'),
+      price1: document.getElementById('price1'),
+      price2: document.getElementById('price2'),
+      sort: document.getElementById('sort'),
+      msg: document.getElementById('msg'),
+      kpiRoutes: document.getElementById('kpi-routes'),
+      kpiCities: document.getElementById('kpi-cities'),
+      kpiDirect: document.getElementById('kpi-direct'),
+    };
+
+    let lastResults = [];
+
+    els.file.addEventListener('change', async (e)=>{
+      const file = e.target.files?.[0];
+      els.msg.textContent = '';
+      if(!file){ ROUTES=[]; render([], els.cls.value); return; }
+      try{
+        ROUTES = await loadCSV(file);
+        const cities = new Set(ROUTES.flatMap(r=>[r.dep_city, r.arr_city]));
+        els.kpiRoutes.textContent = ROUTES.length;
+        els.kpiCities.textContent = cities.size;
+        // quick stat: how many direct A->B among all routes
+        let direct=0; const byDep = groupByDep(ROUTES);
+        for(const [k, arr] of byDep){ direct += arr.filter(r=>arr.some(x=>x.dep_city===r.dep_city && x.arr_city===r.arr_city)).length; break; }
+        els.kpiDirect.textContent = direct;
+        document.getElementById('summary').textContent = `Loaded ${ROUTES.length} routes across ${cities.size} cities`;
+      }catch(err){
+        els.msg.innerHTML = `<span class="error">Failed to parse CSV: ${String(err)}</span>`;
+      }
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', ()=>{
+      ['from','to','traintype','days','depfrom','depto','price1','price2'].forEach(id=>document.getElementById(id).value='');
+      document.getElementById('class').value='second';
+      document.getElementById('maxstops').value='2';
+      document.getElementById('minxfer').value='10';
+      document.getElementById('sort').value='duration';
+      render([], 'second');
+      document.getElementById('summary').textContent='';
+      document.getElementById('kpi-results').textContent='0';
+      els.msg.textContent='';
+    });
+
+    document.getElementById('btn-search').addEventListener('click', ()=>{
+      if(!ROUTES.length){ els.msg.innerHTML = '<span class="error">Please load a CSV first.</span>'; return; }
+      els.msg.textContent='';
+      const q = {
+        dep_city: els.from.value.trim()||null,
+        arr_city: els.to.value.trim()||null,
+        train_type: els.type.value.trim()||null,
+        days: new Set((els.days.value||'').split(',').map(s=>s.trim()).filter(Boolean).map(s=>{
+          const k=s.toLowerCase().replace(/[^a-z]/g,'');
+          return DAY_ALIASES[k] || (s.slice(0,3).charAt(0).toUpperCase()+s.slice(1,3).toLowerCase());
+        })),
+        dep_from: els.depFrom.value? parseTime(els.depFrom.value): null,
+        dep_to: els.depTo.value? parseTime(els.depTo.value): null,
+        max_price_first: els.price1.value? parseFloat(els.price1.value): null,
+        max_price_second: els.price2.value? parseFloat(els.price2.value): null,
+      };
+      const filtered = filterRoutes(ROUTES, q);
+      const itins = findItineraries(filtered, q.dep_city||'', q.arr_city||'', parseInt(els.maxStops.value,10), parseInt(els.minXfer.value,10));
+      const cls = els.cls.value;
+      if(els.sort.value==='price') itins.sort((a,b)=> (price(a,cls)-price(b,cls)) || (totalDuration(a)-totalDuration(b)) );
+      else itins.sort((a,b)=> (totalDuration(a)-totalDuration(b)) || (price(a,cls)-price(b,cls)) );
+      lastResults = itins;
+      render(itins, cls);
+      const dep=q.dep_city||'any', arr=q.arr_city||'any';
+      document.getElementById('summary').textContent = `${itins.length} itineraries • From: ${dep} • To: ${arr} • Sorted by ${els.sort.value}`;
+    });
+
+    document.getElementById('btn-export').addEventListener('click', ()=>{
+      if(!lastResults.length){ els.msg.innerHTML = '<span class="error">No results to export.</span>'; return; }
+      exportCSV(lastResults, els.cls.value);
+    });
+  </script>
+</body>
+</html>
