@@ -6,7 +6,6 @@ participant "Rail Search System" as System
 
 U -> System : accessterminal()
 System --> U : terminalAccessed()
-System --> U : CSVLoaded(routesCount, cityCount, directPairs)
 U -> System : loadCSV(file)
 System --> U : CSVLoaded(routesCount, cityCount, directPairs)
 
