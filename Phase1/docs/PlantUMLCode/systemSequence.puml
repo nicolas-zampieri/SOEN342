@@ -16,10 +16,10 @@ end
 
 loop repeat for each item
     U -> System : executeSearch()
-    System --> U : searchStarted()
     System --> U : searchCompleted(resultsCount)
 end
 
+U -> System : terminalExited()
 
 
 @enduml
