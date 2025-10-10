@@ -22,7 +22,8 @@ This document describes the three main use cases represented in the diagram.
 1. Client opens the application or selects **Upload CSV**.  
 2. System reads the CSV and parses each record.  
 3. System validates fields (cities, times, prices).  
-4. System confirms data is loaded and ready.  
+4. Client may sort results (by duration, price, etc.) or select details.  
+5. System confirms data is loaded and ready.  
 
 **Extensions:**  
 - CSV is invalid → System rejects file and shows error message.  
@@ -77,7 +78,7 @@ This document describes the three main use cases represented in the diagram.
    - Ticket prices (first and second class)  
    - Computed trip duration  
 2. Client views the results.  
-3. Client may sort results (by duration, price, etc.) or select details.  
+ 
 
 **Extensions:**  
 - No results → System displays “No connections found.”  
