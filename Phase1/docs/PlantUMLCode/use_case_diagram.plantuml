@@ -1,4 +1,4 @@
-@startuml
+@startuml use_case_diagram
 left to right direction
 actor Client
 
