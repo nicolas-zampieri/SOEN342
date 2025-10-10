@@ -17,18 +17,6 @@ indirect connections (up to 2 stops). Supports filtering by most fields
 (except route ID), computes trip + transfer durations, and sorts results
 by duration or price.
 
-Usage (CLI):
-    python rail_search.py --csv eu_rail_network.csv \
-        --from "Paris" --to "Berlin" \
-        --class second --max-stops 2 --min-transfer 10 \
-        --days "Mon,Tue,Wed,Thu,Fri" \
-        --sort duration --limit 10
-
-    # More examples
-    python rail_search.py --csv eu_rail_network.csv --from "Rome" --to "Milan" --sort price
-    python rail_search.py --csv eu_rail_network.csv --train-type "TGV" --from "Lyon" --to "Paris"
-    python rail_search.py --csv eu_rail_network.csv --from "Munich" --to "Zurich" --class first --max-stops 1
-
 Notes & Assumptions:
 
 - Times are interpreted as HH:MM (24h). If arrival < departure, we assume arrival is next day.
@@ -39,4 +27,21 @@ Notes & Assumptions:
   days, we require that the chosen day appears in ALL legs. If you supply multiple days as a list,
   any overlap is accepted (at least one day common across all legs).
 - Sorting by price uses your chosen class (first or second) aggregated across legs.
-- This file offers both a CLI and a Python API (see search_itineraries).
+
+Artifacts:
+
+- All artifacts were completed prior to coding however they were uploaded onto GIT after the code. 
+- The artifacts that we have are: Use case diagram, use cases, domain model, system sequence diagram, system operations, operation contract, interaction diagram and class diagram which were completed in thier respective order
+
+How to run?
+
+1) Open the index.html file
+![alt text](image.png)
+
+2) Upload the desired CSV file
+
+3) Fill in search/filter requirements wanted for your trip
+
+4) Enjoy a fully planned itinerary:)
+
+
