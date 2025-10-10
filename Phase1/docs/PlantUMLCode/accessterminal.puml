@@ -1,0 +1,10 @@
+@startuml AccessTerminal
+title Access Terminal
+
+actor User as U
+participant "RailSearchApp" as App
+
+U -> App : openApplication()
+App -> App : init()
+
+@enduml

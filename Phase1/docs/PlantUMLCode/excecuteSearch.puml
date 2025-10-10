@@ -1,0 +1,39 @@
+@startuml ExcecuteSearch
+title Internal Operation — executeSearch()
+
+actor User as U
+participant "RailSearchApp (UI)" as UI
+participant "ItineraryService" as SVC
+participant "Routes (in-memory)" as ROUTES
+participant "ResultRenderer" as R
+
+U -> UI : executeSearch()
+
+alt CSV not loaded
+  UI -> R : updateMessage("Please load a CSV first.", true)
+  UI -> R : clearResults()
+  return
+end
+
+UI -> UI : query = buildQuery()
+alt invalid query
+  UI -> R : updateMessage(error, true)
+  deactivate UI
+  return
+end
+
+UI -> SVC : filterRoutes(ROUTES, query)
+SVC --> UI : filteredRoutes
+
+UI -> SVC : findItineraries(filteredRoutes,\n query.dep_city, query.arr_city,\n maxStops, minTransfer)
+SVC --> UI : itineraries[]
+
+UI -> SVC : sort(itineraries, sortBy, cls)
+SVC --> UI : sortedItins[]
+
+UI -> R : render(sortedItins, cls)
+UI -> R : updateSummary("\#{n} itineraries • From ...")
+UI -> R : updateMessage("", false)
+
+deactivate UI
+@enduml
