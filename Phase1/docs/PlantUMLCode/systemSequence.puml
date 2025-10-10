@@ -1,4 +1,4 @@
-@startuml sequence
+@startuml SystemSequenceDiagram
 title System Sequence Diagram for Rail Search
 
 actor User as U

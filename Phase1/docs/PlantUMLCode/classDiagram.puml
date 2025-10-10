@@ -1,0 +1,143 @@
+@startuml classDiagram
+title Rail Search — Class Diagram
+left to right direction
+skinparam classAttributeIconSize 0
+
+' ==== Enumerations ====
+enum Day {
+  Mon
+  Tue
+  Wed
+  Thu
+  Fri
+  Sat
+  Sun
+  Daily
+}
+
+class Class {
+  <<enumeration>>
+  first
+  second
+}
+
+' ==== Value Objects ====
+class TimeOfDay {
+  +h : int
+  +m : int
+  +minutes() : int
+}
+
+' ==== Domain Entities ====
+class Route {
+  +route_id : string
+  +dep_city : string
+  +arr_city : string
+  +dep_time : TimeOfDay
+  +arr_time : TimeOfDay
+  +train_type : string
+  +days : Set<Day>
+  +price_first : number
+  +price_second : number
+  +duration (): int
+}
+
+class Itinerary {
+  +legs : List<Route>
+  +transfers : List<int>
+  +totalDuration() : int
+  +price(cls : Class) : number
+}
+
+class Query {
+  +dep_city : string?
+  +arr_city : string?
+  +train_type : string?
+  +days : Set<Day>?
+  +dep_from : TimeOfDay?
+  +dep_to : TimeOfDay?
+  +max_price_first : number?
+  +max_price_second : number?
+}
+
+' ==== Services / Utilities ====
+class ItineraryService {
+  +filterRoutes(routes : Route[], q : Query) : Route[]
+  +findItineraries(routes : Route[], depCity : string, arrCity : string, maxStops : int, minTransfer : int) : Itinerary[]
+  +totalDuration(itin : Itinerary) : int
+  +price(itin : Itinerary, cls : Class) : number
+  +sort(itins : Itinerary[], sortBy : string, cls : Class) : Itinerary[]
+}
+
+class DayUtils {
+  +normalizeToken(token : string) : Day
+  +parseDays(raw : string) : Set<Day>
+  +parseInputDays(raw : string) : Set<Day>
+}
+
+class TimeUtils {
+  +parseTime(value : string) : TimeOfDay
+  +minutesBetween(start : TimeOfDay, end : TimeOfDay) : int
+  +legDuration(dep : TimeOfDay, arr : TimeOfDay) : int
+  +formatHM(minutes : int) : string
+}
+
+class HeaderNormalizer {
+  +normalize(headers : string[]) : HeaderMap
+}
+
+class CSVLoader {
+  -parser
+  +load(file) : Route[]
+}
+
+class ResultRenderer {
+  -elements
+  -tableBody
+  -summary
+  +render(itins : Itinerary[], cls : Class)
+  +clearResults()
+  +updateSummary(info : string)
+  +updateMessage(msg : string, isError : bool)
+  +updateKPIs(metrics)
+  +resetKPIs()
+  +updateResultsCount(count : int)
+}
+
+class RailSearchApp {
+  -routes : Route[]
+  -lastResults : Itinerary[]
+  -elements
+  -loader : CSVLoader
+  -renderer : ResultRenderer
+  +init()
+  +handleFileChange(event)
+  +handleReset()
+  +buildQuery() : Query
+  +handleSearch()
+  +handleExport()
+}
+
+' ==== Associations / Dependencies ====
+Itinerary --> Route
+Route -->TimeOfDay 
+Route --> TimeOfDay 
+Route --> Day 
+
+ItineraryService --> Route
+ItineraryService --> Itinerary
+ItineraryService --> Query
+ItineraryService --> Class
+
+CSVLoader --> HeaderNormalizer
+CSVLoader --> TimeOfDay
+CSVLoader --> Day
+
+DayUtils --> Day
+TimeUtils --> TimeOfDay
+
+RailSearchApp --> CSVLoader
+RailSearchApp --> ResultRenderer
+RailSearchApp --> ItineraryService
+
+@enduml

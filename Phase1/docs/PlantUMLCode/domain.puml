@@ -21,7 +21,6 @@ class Class {
 class TimeOfDay {
   +h : int
   +m : int
-  +minutes() : int
 }
 
 class Route {
@@ -34,14 +33,11 @@ class Route {
   +days : Set<Day>
   +price_first : number
   +price_second : number
-  +duration() : int
 }
 
 class Itinerary {
   +legs : List<Route>
   +transfers : List<int>
-  +totalDuration() : int
-  +price(cls : Class) : number
 }
 
 class Query {
