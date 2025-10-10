@@ -10,7 +10,8 @@ This document describes the three main use cases represented in the diagram.
 **Primary Actor:** Client  
 
 **Preconditions:**  
-- The CSV file with train connections exists and is accessible.  
+- The CSV file with train connections exists and is accessible.
+- The CSV is properly formatted (as per specifications).
 - The system is running.  
 
 **Postconditions:**  
@@ -25,7 +26,6 @@ This document describes the three main use cases represented in the diagram.
 
 **Extensions:**  
 - CSV is invalid → System rejects file and shows error message.  
-- Invalid records → Skipped, with warning shown to client.  
 
 ---
 
