@@ -1,0 +1,81 @@
+@startuml DomainModel
+left to right direction
+
+enum Day {
+  Mon
+  Tue
+  Wed
+  Thu
+  Fri
+  Sat
+  Sun
+  Daily
+}
+
+class Class {
+  <<enumeration>>
+  first
+  second
+}
+
+class TimeOfDay {
+  +h : int
+  +m : int
+  +minutes() : int
+}
+
+class Route {
+  +route_id : string
+  +dep_city : string
+  +arr_city : string
+  +dep_time : TimeOfDay
+  +arr_time : TimeOfDay
+  +train_type : string
+  +days : Set<Day>
+  +price_first : number
+  +price_second : number
+  +duration() : int
+}
+
+class Itinerary {
+  +legs : List<Route>
+  +transfers : List<int>
+  +totalDuration() : int
+  +price(cls : Class) : number
+}
+
+class Query {
+  +dep_city : string?
+  +arr_city : string?
+  +train_type : string?
+  +days : Set<Day>?
+  +dep_from : TimeOfDay?
+  +dep_to : TimeOfDay?
+  +max_price_first : number?
+  +max_price_second : number?
+}
+
+class ItineraryService
+class DayUtils
+class TimeUtils
+class CSVLoader
+class HeaderNormalizer
+class ResultRenderer
+class RailSearchApp
+
+Itinerary "1" o-- "1..*" Route : legs
+Route "1" *-- "1" TimeOfDay : dep_time
+Route "1" *-- "1" TimeOfDay : arr_time
+Route "1" o-- "0..*" Day : days
+
+CSVLoader --> HeaderNormalizer
+RailSearchApp --> CSVLoader
+RailSearchApp --> ResultRenderer
+RailSearchApp --> ItineraryService
+ItineraryService --> Route
+ItineraryService --> Itinerary
+ItineraryService --> Query
+ItineraryService --> Class
+DayUtils --> Day
+TimeUtils --> TimeOfDay
+@enduml
