@@ -1,0 +1,27 @@
+@startuml sequence
+title System Sequence Diagram for Rail Search
+
+actor User as U
+participant "Rail Search System" as System
+
+U -> System : accessterminal()
+System --> U : terminalAccessed()
+System --> U : CSVLoaded(routesCount, cityCount, directPairs)
+U -> System : loadCSV(file)
+System --> U : CSVLoaded(routesCount, cityCount, directPairs)
+
+loop repeat for each item
+    U -> System : setCriteria(depCity, arrCity, trainType, days,\n depFrom?, depTo?, maxPriceFirst?, maxPriceSecond?,\n maxStops=2, minTransfer=10, cls='second', sort='duration')
+    System --> U : criteriaAccepted()
+end
+
+loop repeat for each item
+    U -> System : executeSearch()
+    System --> U : searchStarted()
+    System --> U : searchCompleted(resultsCount)
+end
+
+
+
+@enduml
+
