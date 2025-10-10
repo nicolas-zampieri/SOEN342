@@ -291,13 +291,6 @@ class ResultRenderer {
   render(itineraries, cls) {
     if (!this.tableBody) return;
     this.tableBody.innerHTML = '';
-    if (!itineraries.length) {
-      const row = document.createElement('tr');
-      row.innerHTML = `<td colspan="8" class="muted" style="text-align:center;padding:12px 8px;">No itineraries match the current filters.</td>`;
-      this.tableBody.appendChild(row);
-      this.updateResultsCount(0);
-      return;
-    }
     for (const itinerary of itineraries) {
       const stops = Math.max(0, itinerary.legs.length - 1);
       const pathSegments = [
@@ -473,13 +466,6 @@ class RailSearchApp {
   buildQuery() {
     const depCity = this.elements.from?.value.trim() || null;
     const arrCity = this.elements.to?.value.trim() || null;
-    if (!depCity || !arrCity) {
-      this.renderer.updateMessage('Please enter both departure and arrival cities.', true);
-      this.renderer.clearResults();
-      this.renderer.updateSummary('');
-      this.lastResults = [];
-      return null;
-    }
     if (depCity && arrCity && depCity.toLowerCase() === arrCity.toLowerCase()) {
       this.renderer.updateMessage('Departure and arrival cities must be different.', true);
       this.renderer.clearResults();
