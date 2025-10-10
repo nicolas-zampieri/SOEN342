@@ -12,6 +12,7 @@ from typing import List, Optional, Dict, Tuple, Iterable, Set
 # Data model
 # ----------------------------------
 
+
 @dataclass(frozen=True)
 class Route:
     route_id: str
@@ -32,6 +33,7 @@ class Route:
         if dt_arr < dt_dep:
             dt_arr += timedelta(days=1)
         return int((dt_arr - dt_dep).total_seconds() // 60)
+
 
 @dataclass
 class Leg:
@@ -57,6 +59,7 @@ class Leg:
     def duration_minutes(self) -> int:
         return self.route.duration_minutes
 
+
 @dataclass
 class Itinerary:
     legs: List[Leg]
@@ -81,7 +84,9 @@ class Itinerary:
     @property
     def duration_minutes(self) -> int:
         """Total journey time including transfers."""
-        return sum(leg.duration_minutes for leg in self.legs) + sum(self.transfers_minutes)
+        return sum(leg.duration_minutes for leg in self.legs) + sum(
+            self.transfers_minutes
+        )
 
     def price(self, cls: str) -> float:
         if cls.lower() == "first":
@@ -92,19 +97,28 @@ class Itinerary:
     def num_stops(self) -> int:
         return max(0, len(self.legs) - 1)
 
+
 # ----------------------------------
 # Parsing and Utilities
 # ----------------------------------
 
 DAY_ALIASES = {
-    "mon": "Mon", "monday": "Mon",
-    "tue": "Tue", "tuesday": "Tue",
-    "wed": "Wed", "wednesday": "Wed",
-    "thu": "Thu", "thursday": "Thu",
-    "fri": "Fri", "friday": "Fri",
-    "sat": "Sat", "saturday": "Sat",
-    "sun": "Sun", "sunday": "Sun",
+    "mon": "Mon",
+    "monday": "Mon",
+    "tue": "Tue",
+    "tuesday": "Tue",
+    "wed": "Wed",
+    "wednesday": "Wed",
+    "thu": "Thu",
+    "thursday": "Thu",
+    "fri": "Fri",
+    "friday": "Fri",
+    "sat": "Sat",
+    "saturday": "Sat",
+    "sun": "Sun",
+    "sunday": "Sun",
 }
+
 
 def parse_time(s: str) -> time:
     s = s.strip()
@@ -114,6 +128,7 @@ def parse_time(s: str) -> time:
         except ValueError:
             pass
     raise ValueError(f"Unrecognized time format: {s!r}")
+
 
 def parse_days(s: str) -> Set[str]:
     if not s:
@@ -126,6 +141,7 @@ def parse_days(s: str) -> Set[str]:
         days.add(DAY_ALIASES.get(key, p[:3].title()))
     return days
 
+
 def load_routes(csv_path: str) -> List[Route]:
     routes: List[Route] = []
     with open(csv_path, newline="", encoding="utf-8") as f:
@@ -137,20 +153,75 @@ def load_routes(csv_path: str) -> List[Route]:
         for row in reader:
             try:
                 route = Route(
-                    route_id=str(row[get("Route ID")] or row[get("route_id")] or row[get("route id")]),
-                    dep_city=str(row[get("Departure City")] or row[get("from")] or row[get("departure")]).strip(),
-                    arr_city=str(row[get("Arrival City")] or row[get("to")] or row[get("arrival")]).strip(),
-                    dep_time=parse_time(str(row[get("Departure Time")] or row[get("dep_time")] or row[get("departure time")] or row[get("depart")] )),
-                    arr_time=parse_time(str(row[get("Arrival Time")] or row[get("arr_time")] or row[get("arrival time")] or row[get("arrive")] )),
-                    train_type=str(row[get("Train Type")] or row[get("train")] or row[get("type")] ).strip(),
-                    days=parse_days(str(row[get("Days of Operation")] or row[get("days")] or row[get("operation days")] )),
-                    price_first=float(str(row[get("First Class ticket rate (in euro)")] or row[get("price_first")] or row[get("first class")] or 0).replace(",", ".").strip() or 0.0),
-                    price_second=float(str(row[get("Second Class ticket rate (in euro)")] or row[get("price_second")] or row[get("second class")] or 0).replace(",", ".").strip() or 0.0),
+                    route_id=str(
+                        row[get("Route ID")]
+                        or row[get("route_id")]
+                        or row[get("route id")]
+                    ),
+                    dep_city=str(
+                        row[get("Departure City")]
+                        or row[get("from")]
+                        or row[get("departure")]
+                    ).strip(),
+                    arr_city=str(
+                        row[get("Arrival City")]
+                        or row[get("to")]
+                        or row[get("arrival")]
+                    ).strip(),
+                    dep_time=parse_time(
+                        str(
+                            row[get("Departure Time")]
+                            or row[get("dep_time")]
+                            or row[get("departure time")]
+                            or row[get("depart")]
+                        )
+                    ),
+                    arr_time=parse_time(
+                        str(
+                            row[get("Arrival Time")]
+                            or row[get("arr_time")]
+                            or row[get("arrival time")]
+                            or row[get("arrive")]
+                        )
+                    ),
+                    train_type=str(
+                        row[get("Train Type")] or row[get("train")] or row[get("type")]
+                    ).strip(),
+                    days=parse_days(
+                        str(
+                            row[get("Days of Operation")]
+                            or row[get("days")]
+                            or row[get("operation days")]
+                        )
+                    ),
+                    price_first=float(
+                        str(
+                            row[get("First Class ticket rate (in euro)")]
+                            or row[get("price_first")]
+                            or row[get("first class")]
+                            or 0
+                        )
+                        .replace(",", ".")
+                        .strip()
+                        or 0.0
+                    ),
+                    price_second=float(
+                        str(
+                            row[get("Second Class ticket rate (in euro)")]
+                            or row[get("price_second")]
+                            or row[get("second class")]
+                            or 0
+                        )
+                        .replace(",", ".")
+                        .strip()
+                        or 0.0
+                    ),
                 )
                 routes.append(route)
             except Exception as e:
                 print(f"[WARN] Skipping malformed row: {e}", file=sys.stderr)
     return routes
+
 
 def minutes_between(t1: time, t2: time) -> int:
     """Return minutes from t1 to t2 assuming same day; if t2 < t1, wrap to next day."""
@@ -160,13 +231,16 @@ def minutes_between(t1: time, t2: time) -> int:
         d2 += timedelta(days=1)
     return int((d2 - d1).total_seconds() // 60)
 
+
 def format_hhmm(minutes: int) -> str:
     h, m = divmod(minutes, 60)
     return f"{h:02d}:{m:02d}"
 
+
 # ----------------------------------
 # Searching
 # ----------------------------------
+
 
 def filter_routes(
     routes: Iterable[Route],
@@ -185,7 +259,11 @@ def filter_routes(
     dep_city_norm = dep_city.lower() if dep_city else None
     arr_city_norm = arr_city.lower() if arr_city else None
     train_type_norm = train_type.lower() if train_type else None
-    day_set = set(DAY_ALIASES.get(d.strip().lower(), d.strip().title()) for d in days) if days else None
+    day_set = (
+        set(DAY_ALIASES.get(d.strip().lower(), d.strip().title()) for d in days)
+        if days
+        else None
+    )
 
     dtf = parse_time(dep_time_from) if dep_time_from else None
     dtt = parse_time(dep_time_to) if dep_time_to else None
@@ -234,6 +312,7 @@ def filter_routes(
         out.append(r)
     return out
 
+
 def find_direct_itineraries(
     routes: List[Route],
     dep_city: Optional[str],
@@ -243,8 +322,10 @@ def find_direct_itineraries(
     filtered = filter_routes(routes, dep_city=dep_city, arr_city=arr_city, **kwargs)
     return [Itinerary([Leg(r)], []) for r in filtered]
 
+
 def routes_from_city(routes_by_dep: Dict[str, List[Route]], city: str) -> List[Route]:
     return routes_by_dep.get(city.lower(), [])
+
 
 def find_connected_itineraries(
     routes: List[Route],
@@ -282,7 +363,9 @@ def find_connected_itineraries(
                     continue
                 # simple same-day constraint: dep2 should not be "earlier" than dep1 in absolute clock sense if wrapped
                 # Using a conservative check to avoid overnight complexities:
-                if datetime.combine(datetime.today(), r2.dep_time) < datetime.combine(datetime.today(), r1.arr_time):
+                if datetime.combine(datetime.today(), r2.dep_time) < datetime.combine(
+                    datetime.today(), r1.arr_time
+                ):
                     # If r2 departs before r1 arrives in same-day timeline (no wrap), we already handled via minutes_between
                     pass
                 results.append(Itinerary([Leg(r1), Leg(r2)], [transfer]))
@@ -300,7 +383,9 @@ def find_connected_itineraries(
                     transfer2 = minutes_between(r2.arr_time, r3.dep_time)
                     if transfer2 < min_transfer:
                         continue
-                    results.append(Itinerary([Leg(r1), Leg(r2), Leg(r3)], [transfer1, transfer2]))
+                    results.append(
+                        Itinerary([Leg(r1), Leg(r2), Leg(r3)], [transfer1, transfer2])
+                    )
 
     # Deduplicate itineraries by their sequence of route_ids (in case of duplicate rows)
     seen = set()
@@ -312,9 +397,11 @@ def find_connected_itineraries(
             deduped.append(it)
     return deduped
 
+
 # ----------------------------------
 # High-level API
 # ----------------------------------
+
 
 def search_itineraries(
     csv_path: str,
@@ -363,17 +450,28 @@ def search_itineraries(
         itineraries = itineraries[:limit]
     return itineraries
 
+
 # ----------------------------------
 # Presentation
 # ----------------------------------
 
+
 def itinerary_row(it: Itinerary, cls: str) -> Dict[str, str]:
-    path = " → ".join([f"{leg.dep_city}({leg.dep_time.strftime('%H:%M')})" for leg in it.legs] + [f"{it.arr_city}({it.arr_time.strftime('%H:%M')})"])
-    legs = " | ".join([
-        f"[{i+1}] {leg.dep_city}→{leg.arr_city} {leg.dep_time.strftime('%H:%M')}-{leg.arr_time.strftime('%H:%M')} ({format_hhmm(leg.duration_minutes)})"
-        for i, leg in enumerate(it.legs)
-    ])
-    transfers = ", ".join(f"{format_hhmm(m)}" for m in it.transfers_minutes) if it.transfers_minutes else "—"
+    path = " → ".join(
+        [f"{leg.dep_city}({leg.dep_time.strftime('%H:%M')})" for leg in it.legs]
+        + [f"{it.arr_city}({it.arr_time.strftime('%H:%M')})"]
+    )
+    legs = " | ".join(
+        [
+            f"[{i+1}] {leg.dep_city}→{leg.arr_city} {leg.dep_time.strftime('%H:%M')}-{leg.arr_time.strftime('%H:%M')} ({format_hhmm(leg.duration_minutes)})"
+            for i, leg in enumerate(it.legs)
+        ]
+    )
+    transfers = (
+        ", ".join(f"{format_hhmm(m)}" for m in it.transfers_minutes)
+        if it.transfers_minutes
+        else "—"
+    )
     return {
         "Stops": str(it.num_stops),
         "Path": path,
@@ -385,9 +483,18 @@ def itinerary_row(it: Itinerary, cls: str) -> Dict[str, str]:
         "Sort Price (Chosen Class)": f"{it.price(cls):.2f}€",
     }
 
+
 def print_table(itineraries: List[Itinerary], cls: str) -> None:
     from shutil import get_terminal_size
-    cols = ["Stops", "Total Duration", "Sort Price (Chosen Class)", "Transfers", "Path", "Legs"]
+
+    cols = [
+        "Stops",
+        "Total Duration",
+        "Sort Price (Chosen Class)",
+        "Transfers",
+        "Path",
+        "Legs",
+    ]
     rows = [itinerary_row(it, cls) for it in itineraries]
 
     # Compute column widths (limited by terminal width)
@@ -411,7 +518,7 @@ def print_table(itineraries: List[Itinerary], cls: str) -> None:
 
     # Adjust widths to fit
     fixed = sum(widths[c] + 3 for c in cols if c not in ("Path", "Legs"))
-    avail = max(40, term_width - fixed - 3*2)
+    avail = max(40, term_width - fixed - 3 * 2)
     path_w = min(widths["Path"], avail // 2)
     legs_w = max(20, avail - path_w)
     widths["Path"], widths["Legs"] = path_w, legs_w
@@ -439,28 +546,65 @@ def print_table(itineraries: List[Itinerary], cls: str) -> None:
             print(" | ".join(cell.ljust(widths[c]) for cell, c in zip(cells, cols)))
         print(sep)
 
+
 # ----------------------------------
 # CLI
 # ----------------------------------
 
+
 def main(argv=None):
-    p = argparse.ArgumentParser(description="Search EU rail connections (direct + up to 2 stops).")
+    p = argparse.ArgumentParser(
+        description="Search EU rail connections (direct + up to 2 stops)."
+    )
     p.add_argument("--csv", required=True, help="Path to eu_rail_network.csv")
     p.add_argument("--from", dest="dep_city", help="Departure city (substring match)")
     p.add_argument("--to", dest="arr_city", help="Arrival city (substring match)")
     p.add_argument("--train-type", help="Filter by train type (substring match)")
-    p.add_argument("--days", help="Comma-separated days to operate (e.g., Mon,Wed,Fri). Any overlap accepted.")
-    p.add_argument("--dep-from", dest="dep_time_from", help="Earliest departure time (HH:MM)")
+    p.add_argument(
+        "--days",
+        help="Comma-separated days to operate (e.g., Mon,Wed,Fri). Any overlap accepted.",
+    )
+    p.add_argument(
+        "--dep-from", dest="dep_time_from", help="Earliest departure time (HH:MM)"
+    )
     p.add_argument("--dep-to", dest="dep_time_to", help="Latest departure time (HH:MM)")
-    p.add_argument("--arr-from", dest="arr_time_from", help="Earliest arrival time (HH:MM)")
+    p.add_argument(
+        "--arr-from", dest="arr_time_from", help="Earliest arrival time (HH:MM)"
+    )
     p.add_argument("--arr-to", dest="arr_time_to", help="Latest arrival time (HH:MM)")
-    p.add_argument("--max-price-first", type=float, help="Max first-class price for a single leg")
-    p.add_argument("--max-price-second", type=float, help="Max second-class price for a single leg")
-    p.add_argument("--class", dest="cls", default="second", choices=["first", "second"], help="Price class used for sorting")
-    p.add_argument("--max-stops", type=int, default=2, choices=[0,1,2], help="Maximum number of stops (0=direct only)")
-    p.add_argument("--min-transfer", type=int, default=10, help="Minimum transfer time in minutes")
-    p.add_argument("--sort", dest="sort_by", default="duration", choices=["duration", "price"], help="Sort results by duration or price")
-    p.add_argument("--limit", type=int, default=50, help="Limit number of results shown")
+    p.add_argument(
+        "--max-price-first", type=float, help="Max first-class price for a single leg"
+    )
+    p.add_argument(
+        "--max-price-second", type=float, help="Max second-class price for a single leg"
+    )
+    p.add_argument(
+        "--class",
+        dest="cls",
+        default="second",
+        choices=["first", "second"],
+        help="Price class used for sorting",
+    )
+    p.add_argument(
+        "--max-stops",
+        type=int,
+        default=2,
+        choices=[0, 1, 2],
+        help="Maximum number of stops (0=direct only)",
+    )
+    p.add_argument(
+        "--min-transfer", type=int, default=10, help="Minimum transfer time in minutes"
+    )
+    p.add_argument(
+        "--sort",
+        dest="sort_by",
+        default="duration",
+        choices=["duration", "price"],
+        help="Sort results by duration or price",
+    )
+    p.add_argument(
+        "--limit", type=int, default=50, help="Limit number of results shown"
+    )
 
     args = p.parse_args(argv)
 
@@ -490,6 +634,7 @@ def main(argv=None):
 
     print_table(itineraries, args.cls)
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
