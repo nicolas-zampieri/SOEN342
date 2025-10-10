@@ -1,320 +1,578 @@
-const DAY_ALIASES = { mon: 'Mon', monday: 'Mon', tue: 'Tue', tuesday: 'Tue', wed: 'Wed', wednesday: 'Wed', thu: 'Thu', thursday: 'Thu', fri: 'Fri', friday: 'Fri', sat: 'Sat', saturday: 'Sat', sun: 'Sun', sunday: 'Sun' };
+const DAY_ALIASES = {
+  mon: 'Mon',
+  monday: 'Mon',
+  tue: 'Tue',
+  tuesday: 'Tue',
+  wed: 'Wed',
+  wednesday: 'Wed',
+  thu: 'Thu',
+  thursday: 'Thu',
+  fri: 'Fri',
+  friday: 'Fri',
+  sat: 'Sat',
+  saturday: 'Sat',
+  sun: 'Sun',
+  sunday: 'Sun',
+  daily: 'Daily',
+};
 
-function parseTime(s) {
-    s = (s || '').toString().trim();
-    if (!s) throw new Error('time empty');
-    const fmts = [/^(\d{1,2}):(\d{2})$/, /^(\d{1,2})\.(\d{2})$/, /^(\d{1,2})(\d{2})$/];
-    for (const re of fmts) {
-        const m = s.match(re);
-        if (m) {
-            const h = parseInt(m[1], 10), mm = parseInt(m[2], 10);
-            if (h >= 0 && h < 24 && mm >= 0 && mm < 60) return { h, m: mm };
-        }
-    }
-    throw new Error('Unrecognized time: ' + s);
+class DayUtils {
+  static normalizeToken(token) {
+    const key = token.toLowerCase().replace(/[^a-z]/g, '');
+    if (!key) return null;
+    if (DAY_ALIASES[key]) return DAY_ALIASES[key];
+    const abbr = token.slice(0, 3).toLowerCase();
+    if (!abbr) return null;
+    return abbr.charAt(0).toUpperCase() + abbr.slice(1);
+  }
+
+  static parseDays(raw) {
+    if (!raw) return new Set();
+    const parts = raw.replaceAll('/', ',').split(',').map((p) => p.trim()).filter(Boolean);
+    return new Set(parts.map((p) => DayUtils.normalizeToken(p)).filter(Boolean));
+  }
+
+  static parseInputDays(raw) {
+    if (!raw) return new Set();
+    const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
+    return new Set(parts.map((p) => DayUtils.normalizeToken(p)).filter(Boolean));
+  }
 }
-function minutesBetween(t1, t2) {
-    let a = t1.h * 60 + t1.m, b = t2.h * 60 + t2.m;
-    if (b < a) b += 1440; // wrap to next day
+
+class TimeUtils {
+  static parseTime(value) {
+    const s = (value || '').toString().trim();
+    if (!s) throw new Error('Time value is empty');
+    const patterns = [/^(\d{1,2}):(\d{2})$/, /^(\d{1,2})\.(\d{2})$/, /^(\d{1,2})(\d{2})$/];
+    for (const re of patterns) {
+      const match = s.match(re);
+      if (match) {
+        const hours = parseInt(match[1], 10);
+        const minutes = parseInt(match[2], 10);
+        if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
+          return { h: hours, m: minutes };
+        }
+      }
+    }
+    throw new Error(`Unrecognized time format: ${s}`);
+  }
+
+  static minutesBetween(start, end) {
+    const a = start.h * 60 + start.m;
+    let b = end.h * 60 + end.m;
+    if (b < a) b += 1440;
     return b - a;
-}
-function legDuration(dep, arr) { return minutesBetween(dep, arr); }
-function formatHM(mins) { const h = Math.floor(mins / 60), m = mins % 60; return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`; }
-function parseDays(s) {
-    if (!s) return new Set();
-    const parts = s.replaceAll('/', ',').split(',').map(x => x.trim()).filter(Boolean);
-    return new Set(parts.map(p => { const k = p.toLowerCase().replace(/[^a-z]/g, ''); return DAY_ALIASES[k] || (p.slice(0, 3).charAt(0).toUpperCase() + p.slice(1, 3).toLowerCase()); }));
+  }
+
+  static legDuration(dep, arr) {
+    return TimeUtils.minutesBetween(dep, arr);
+  }
+
+  static formatHM(minutes) {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  }
 }
 
-function normalizeHeaders(hdrs) {
-    // Map common header variants to canonical names
-    const lower = Object.fromEntries(hdrs.map(h => [h.toLowerCase().trim(), h]));
-    function get(...names) {
-        for (const nm of names) { if (lower[nm.toLowerCase()]) return lower[nm.toLowerCase()]; }
-        return undefined;
-    }
-    return {
-        route_id: get('route id', 'route_id', 'id'),
-        dep_city: get('departure city', 'from', 'departure'),
-        arr_city: get('arrival city', 'to', 'arrival'),
-        dep_time: get('departure time', 'dep_time', 'depart'),
-        arr_time: get('arrival time', 'arr_time', 'arrive'),
-        train_type: get('train type', 'train', 'type'),
-        days: get('days of operation', 'days', 'operation days'),
-        price_first: get('first class ticket rate (in euro)', 'price_first', 'first class'),
-        price_second: get('second class ticket rate (in euro)', 'price_second', 'second class'),
+class HeaderNormalizer {
+  static normalize(headers) {
+    const lower = Object.fromEntries(headers.map((h) => [h.toLowerCase().trim(), h]));
+    const get = (...names) => {
+      for (const name of names) {
+        const key = name.toLowerCase();
+        if (lower[key]) return lower[key];
+      }
+      return undefined;
     };
+    return {
+      route_id: get('route id', 'route_id', 'id'),
+      dep_city: get('departure city', 'from', 'departure'),
+      arr_city: get('arrival city', 'to', 'arrival'),
+      dep_time: get('departure time', 'dep_time', 'depart'),
+      arr_time: get('arrival time', 'arr_time', 'arrive'),
+      train_type: get('train type', 'train', 'type'),
+      days: get('days of operation', 'days', 'operation days'),
+      price_first: get('first class ticket rate (in euro)', 'price_first', 'first class'),
+      price_second: get('second class ticket rate (in euro)', 'price_second', 'second class'),
+    };
+  }
 }
 
-let ROUTES = [];
+class CSVLoader {
+  constructor(parser = Papa) {
+    this.parser = parser;
+  }
 
-function loadCSV(file) {
+  load(file) {
     return new Promise((resolve, reject) => {
-        Papa.parse(file, {
-            header: true, dynamicTyping: false, skipEmptyLines: true,
-            complete: (res) => {
+      this.parser.parse(file, {
+        header: true,
+        dynamicTyping: false,
+        skipEmptyLines: true,
+        complete: (result) => {
+          try {
+            const headers = result.meta.fields || [];
+            const map = HeaderNormalizer.normalize(headers);
+            const rows = result.data
+              .map((row, index) => {
                 try {
-                    const map = normalizeHeaders(res.meta.fields || []);
-                    const rows = res.data.map((row, i) => {
-                        try {
-                            const depT = parseTime(row[map.dep_time]);
-                            const arrT = parseTime(row[map.arr_time]);
-                            return {
-                                route_id: String(row[map.route_id] ?? `row-${i}`),
-                                dep_city: String(row[map.dep_city] || '').trim(),
-                                arr_city: String(row[map.arr_city] || '').trim(),
-                                dep_time: depT,
-                                arr_time: arrT,
-                                train_type: String(row[map.train_type] || '').trim(),
-                                days: parseDays(String(row[map.days] || '')),
-                                price_first: parseFloat(String(row[map.price_first] || '0').replace(',', '.')) || 0,
-                                price_second: parseFloat(String(row[map.price_second] || '0').replace(',', '.')) || 0,
-                                duration: legDuration(depT, arrT),
-                            };
-                        } catch (e) {
-                            console.warn('Skipping row', i, e);
-                            return null;
-                        }
-                    }).filter(Boolean);
-                    resolve(rows);
-                } catch (err) { reject(err); }
-            },
-            error: (err) => reject(err)
-        });
-    });
-}
-
-function filterRoutes(routes, q) {
-    // IMPORTANT: Do NOT filter by dep_city/arr_city here, or we'll lose intermediate legs
-    // needed for 1- and 2-stop connections. We only apply generic filters here.
-    const type = q.train_type?.toLowerCase() || null;
-    const daySet = q.days && q.days.size ? q.days : null;
-    const dtf = q.dep_from; const dtt = q.dep_to;
-    const max1 = q.max_price_first, max2 = q.max_price_second;
-    return routes.filter(r => {
-        if (type && !r.train_type.toLowerCase().includes(type)) return false;
-        if (daySet) { const overlap = [...daySet].some(d => r.days.has(d)); if (!overlap) return false; }
-        if (dtf) {
-            const diff = minutesBetween(dtf, r.dep_time); // 0..1439 relative to dtf
-            const dmax = dtt ? minutesBetween(dtf, dtt) : null;
-            if (dmax !== null) { if (!(0 <= diff && diff <= dmax)) return false; }
-        }
-        if (max1 != null && r.price_first > max1) return false;
-        if (max2 != null && r.price_second > max2) return false;
-        return true;
-    });
-}
-
-function groupByDep(routes) {
-    const m = new Map();
-    for (const r of routes) {
-        const k = r.dep_city.toLowerCase();
-        if (!m.has(k)) m.set(k, []);
-        m.get(k).push(r);
-    }
-    return m;
-}
-
-function findItineraries(routes, depCity, arrCity, maxStops = 2, minTransfer = 10) {
-    const byDep = groupByDep(routes);
-    const results = [];
-    const depKey = (depCity || '').toLowerCase();
-    const target = (arrCity || '').toLowerCase();
-
-    const mins = (t) => t.h * 60 + t.m; // minutes since midnight (no wrap)
-
-    function addIt(legs) {
-        const transfers = [];
-        for (let i = 0; i < legs.length - 1; i++) transfers.push(mins(legs[i + 1].dep_time) - mins(legs[i].arr_time));
-        results.push({ legs, transfers });
-    }
-
-    // 0 stops (direct)
-    for (const r of (byDep.get(depKey) || [])) {
-        if (r.arr_city.toLowerCase() === target) {
-            addIt([r]);
-        }
-    }
-
-    // 1 stop: A -> X -> B (no cycles, same-day time monotonicity)
-    if (maxStops >= 1) {
-        for (const r1 of (byDep.get(depKey) || [])) {
-            const midKey1 = r1.arr_city.toLowerCase();
-            if (midKey1 === depKey) continue; // avoid returning to origin immediately
-            for (const r2 of (byDep.get(midKey1) || [])) {
-                if (r2.arr_city.toLowerCase() !== target) continue;
-                // Same-day only: next departure must be at/after previous arrival (no overnight wrap)
-                if (mins(r2.dep_time) < mins(r1.arr_time)) continue;
-                const t1 = mins(r2.dep_time) - mins(r1.arr_time);
-                if (t1 < minTransfer) continue;
-                addIt([r1, r2]);
-            }
-        }
-    }
-
-    // 2 stops: A -> X -> Y -> B (no cycles, same-day time monotonicity)
-    if (maxStops >= 2) {
-        for (const r1 of (byDep.get(depKey) || [])) {
-            const midKey1 = r1.arr_city.toLowerCase();
-            if (midKey1 === depKey) continue; // avoid trivial cycle
-            for (const r2 of (byDep.get(midKey1) || [])) {
-                if (mins(r2.dep_time) < mins(r1.arr_time)) continue; // same-day monotonicity
-                const t1 = mins(r2.dep_time) - mins(r1.arr_time);
-                if (t1 < minTransfer) continue;
-                const midKey2 = r2.arr_city.toLowerCase();
-                // prevent cycles: cannot revisit origin or previous stop
-                if (midKey2 === depKey || midKey2 === midKey1) continue;
-                for (const r3 of (byDep.get(midKey2) || [])) {
-                    if (r3.arr_city.toLowerCase() !== target) continue;
-                    if (mins(r3.dep_time) < mins(r2.arr_time)) continue; // same-day monotonicity
-                    const t2 = mins(r3.dep_time) - mins(r2.arr_time);
-                    if (t2 < minTransfer) continue;
-                    addIt([r1, r2, r3]);
+                  const depTime = TimeUtils.parseTime(row[map.dep_time]);
+                  const arrTime = TimeUtils.parseTime(row[map.arr_time]);
+                  return {
+                    route_id: String(row[map.route_id] ?? `row-${index}`),
+                    dep_city: String(row[map.dep_city] || '').trim(),
+                    arr_city: String(row[map.arr_city] || '').trim(),
+                    dep_time: depTime,
+                    arr_time: arrTime,
+                    train_type: String(row[map.train_type] || '').trim(),
+                    days: DayUtils.parseDays(String(row[map.days] || '')),
+                    price_first: parseFloat(String(row[map.price_first] || '0').replace(',', '.')) || 0,
+                    price_second: parseFloat(String(row[map.price_second] || '0').replace(',', '.')) || 0,
+                    duration: TimeUtils.legDuration(depTime, arrTime),
+                  };
+                } catch (error) {
+                  console.warn('Skipping row', index, error);
+                  return null;
                 }
-            }
+              })
+              .filter(Boolean);
+            resolve(rows);
+          } catch (error) {
+            reject(error);
+          }
+        },
+        error: (error) => reject(error),
+      });
+    });
+  }
+}
+
+class ItineraryService {
+  static filterRoutes(routes, query) {
+    const type = query.train_type ? query.train_type.toLowerCase() : null;
+    const daySet = query.days && query.days.size ? query.days : null;
+    const depFrom = query.dep_from;
+    const depTo = query.dep_to;
+    const maxFirst = query.max_price_first;
+    const maxSecond = query.max_price_second;
+
+    return routes.filter((route) => {
+      if (type && !route.train_type.toLowerCase().includes(type)) return false;
+      if (daySet) {
+        const overlap = [...daySet].some((day) => route.days.has(day));
+        if (!overlap) return false;
+      }
+      if (depFrom) {
+        const diff = TimeUtils.minutesBetween(depFrom, route.dep_time);
+        const maxDiff = depTo ? TimeUtils.minutesBetween(depFrom, depTo) : null;
+        if (maxDiff !== null && !(0 <= diff && diff <= maxDiff)) return false;
+      }
+      if (maxFirst != null && route.price_first > maxFirst) return false;
+      if (maxSecond != null && route.price_second > maxSecond) return false;
+      return true;
+    });
+  }
+
+  static groupByDeparture(routes) {
+    const map = new Map();
+    for (const route of routes) {
+      const key = route.dep_city.toLowerCase();
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(route);
+    }
+    return map;
+  }
+
+  static findItineraries(routes, depCity, arrCity, maxStops = 2, minTransfer = 10) {
+    const byDeparture = ItineraryService.groupByDeparture(routes);
+    const results = [];
+    const originKey = (depCity || '').toLowerCase();
+    const targetKey = (arrCity || '').toLowerCase();
+    const absoluteMinutes = (time) => time.h * 60 + time.m;
+
+    const appendItinerary = (legs) => {
+      const transfers = [];
+      for (let i = 0; i < legs.length - 1; i += 1) {
+        transfers.push(absoluteMinutes(legs[i + 1].dep_time) - absoluteMinutes(legs[i].arr_time));
+      }
+      results.push({ legs, transfers });
+    };
+
+    for (const leg of byDeparture.get(originKey) || []) {
+      if (leg.arr_city.toLowerCase() === targetKey) appendItinerary([leg]);
+    }
+
+    if (maxStops >= 1) {
+      for (const leg1 of byDeparture.get(originKey) || []) {
+        const midKey = leg1.arr_city.toLowerCase();
+        if (midKey === originKey) continue;
+        for (const leg2 of byDeparture.get(midKey) || []) {
+          if (leg2.arr_city.toLowerCase() !== targetKey) continue;
+          if (absoluteMinutes(leg2.dep_time) < absoluteMinutes(leg1.arr_time)) continue;
+          const transfer = absoluteMinutes(leg2.dep_time) - absoluteMinutes(leg1.arr_time);
+          if (transfer < minTransfer) continue;
+          appendItinerary([leg1, leg2]);
         }
+      }
     }
 
-    // Deduplicate itineraries by their route sequence
+    if (maxStops >= 2) {
+      for (const leg1 of byDeparture.get(originKey) || []) {
+        const midKey1 = leg1.arr_city.toLowerCase();
+        if (midKey1 === originKey) continue;
+        for (const leg2 of byDeparture.get(midKey1) || []) {
+          if (absoluteMinutes(leg2.dep_time) < absoluteMinutes(leg1.arr_time)) continue;
+          const transfer1 = absoluteMinutes(leg2.dep_time) - absoluteMinutes(leg1.arr_time);
+          if (transfer1 < minTransfer) continue;
+          const midKey2 = leg2.arr_city.toLowerCase();
+          if (midKey2 === originKey || midKey2 === midKey1) continue;
+          for (const leg3 of byDeparture.get(midKey2) || []) {
+            if (leg3.arr_city.toLowerCase() !== targetKey) continue;
+            if (absoluteMinutes(leg3.dep_time) < absoluteMinutes(leg2.arr_time)) continue;
+            const transfer2 = absoluteMinutes(leg3.dep_time) - absoluteMinutes(leg2.arr_time);
+            if (transfer2 < minTransfer) continue;
+            appendItinerary([leg1, leg2, leg3]);
+          }
+        }
+      }
+    }
+
     const seen = new Set();
-    const dedup = [];
-    for (const it of results) {
-        const key = it.legs.map(l => l.route_id).join('>');
-        if (!seen.has(key)) { seen.add(key); dedup.push(it); }
+    const deduped = [];
+    for (const itinerary of results) {
+      const key = itinerary.legs.map((leg) => leg.route_id).join('>');
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(itinerary);
+      }
     }
-    return dedup;
-}
+    return deduped;
+  }
 
-function totalDuration(it) {
-    const legs = it.legs.reduce((a, l) => a + l.duration, 0);
-    const xfers = it.transfers.reduce((a, b) => a + b, 0);
-    return legs + xfers;
-}
-function price(it, cls) {
-    return it.legs.reduce((a, l) => a + (cls === 'first' ? l.price_first : l.price_second), 0);
-}
+  static totalDuration(itinerary) {
+    const legs = itinerary.legs.reduce((sum, leg) => sum + leg.duration, 0);
+    const transfers = itinerary.transfers.reduce((sum, minutes) => sum + minutes, 0);
+    return legs + transfers;
+  }
 
-function render(itins, cls) {
-    const tbody = document.querySelector('#results tbody');
-    tbody.innerHTML = '';
-    for (const it of itins) {
-        const stops = Math.max(0, it.legs.length - 1);
-        const path = [...it.legs.map(l => `${l.dep_city}(${String(l.dep_time.h).padStart(2, '0')}:${String(l.dep_time.m).padStart(2, '0')})`), `${it.legs.at(-1).arr_city}(${String(it.legs.at(-1).arr_time.h).padStart(2, '0')}:${String(it.legs.at(-1).arr_time.m).padStart(2, '0')})`].join(' → ');
-        const legs = it.legs.map((l, i) => `[${i + 1}] ${l.dep_city}→${l.arr_city} ${String(l.dep_time.h).padStart(2, '0')}:${String(l.dep_time.m).padStart(2, '0')}–${String(l.arr_time.h).padStart(2, '0')}:${String(l.arr_time.m).padStart(2, '0')} (${formatHM(l.duration)})`).join(' | ');
-        const transfers = it.transfers.length ? it.transfers.map(formatHM).join(', ') : '—';
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td class="nowrap"><span class="badge">${stops}</span></td>
-          <td class="nowrap">${formatHM(totalDuration(it))}</td>
-          <td class="nowrap">€${price(it, cls).toFixed(2)}</td>
-          <td class="nowrap">${transfers}</td>
-          <td class="path">${path}</td>
-          <td>${legs}</td>
-        `;
-        tbody.appendChild(tr);
+  static price(itinerary, cls) {
+    return itinerary.legs.reduce((sum, leg) => {
+      return sum + (cls === 'first' ? leg.price_first : leg.price_second);
+    }, 0);
+  }
+
+  static sort(itineraries, sortBy, cls) {
+    const copy = [...itineraries];
+    if (sortBy === 'price') {
+      copy.sort(
+        (a, b) =>
+          ItineraryService.price(a, cls) - ItineraryService.price(b, cls)
+          || ItineraryService.totalDuration(a) - ItineraryService.totalDuration(b),
+      );
+    } else {
+      copy.sort(
+        (a, b) =>
+          ItineraryService.totalDuration(a) - ItineraryService.totalDuration(b)
+          || ItineraryService.price(a, cls) - ItineraryService.price(b, cls),
+      );
     }
-    document.getElementById('kpi-results').textContent = itins.length;
+    return copy;
+  }
 }
 
-function exportCSV(itins, cls) {
-    const rows = itins.map(it => ({
-        stops: Math.max(0, it.legs.length - 1),
-        total_duration: formatHM(totalDuration(it)),
-        price: price(it, cls).toFixed(2),
-        transfers: it.transfers.length ? it.transfers.map(formatHM).join(' / ') : '',
-        path: [...it.legs.map(l => `${l.dep_city}(${String(l.dep_time.h).padStart(2, '0')}:${String(l.dep_time.m).padStart(2, '0')})`), `${it.legs.at(-1).arr_city}(${String(it.legs.at(-1).arr_time.h).padStart(2, '0')}:${String(it.legs.at(-1).arr_time.m).padStart(2, '0')})`].join(' -> '),
-        legs: it.legs.map((l, i) => `[${i + 1}] ${l.dep_city}->${l.arr_city} ${String(l.dep_time.h).padStart(2, '0')}:${String(l.dep_time.m).padStart(2, '0')}–${String(l.arr_time.h).padStart(2, '0')}:${String(l.arr_time.m).padStart(2, '0')} (${formatHM(l.duration)})`).join(' | '),
+class ResultRenderer {
+  constructor(elements) {
+    this.elements = elements;
+    this.tableBody = document.querySelector('#results tbody');
+    this.summary = document.getElementById('summary');
+  }
+
+  render(itineraries, cls) {
+    if (!this.tableBody) return;
+    this.tableBody.innerHTML = '';
+    for (const itinerary of itineraries) {
+      const stops = Math.max(0, itinerary.legs.length - 1);
+      const pathSegments = [
+        ...itinerary.legs.map(
+          (leg) => `${leg.dep_city}(${String(leg.dep_time.h).padStart(2, '0')}:${String(leg.dep_time.m).padStart(2, '0')})`,
+        ),
+        `${itinerary.legs.at(-1).arr_city}(${String(itinerary.legs.at(-1).arr_time.h).padStart(2, '0')}:${String(
+          itinerary.legs.at(-1).arr_time.m,
+        ).padStart(2, '0')})`,
+      ];
+      const legsText = itinerary.legs
+        .map(
+          (leg, index) =>
+            `[${index + 1}] ${leg.dep_city}→${leg.arr_city} ${String(leg.dep_time.h).padStart(2, '0')}:${String(
+              leg.dep_time.m,
+            ).padStart(2, '0')}–${String(leg.arr_time.h).padStart(2, '0')}:${String(leg.arr_time.m).padStart(
+              2,
+              '0',
+            )} (${TimeUtils.formatHM(leg.duration)})`,
+        )
+        .join(' | ');
+      const transfers = itinerary.transfers.length
+        ? itinerary.transfers.map((minutes) => TimeUtils.formatHM(minutes)).join(', ')
+        : '—';
+      const trainTypes = itinerary.legs.map((leg) => leg.train_type || '—').join(' | ') || '—';
+      const daysText = itinerary.legs
+        .map((leg) => {
+          const arr = Array.from(leg.days || []);
+          return arr.length ? arr.join('/') : '—';
+        })
+        .join(' | ');
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td class="nowrap"><span class="badge">${stops}</span></td>
+        <td class="nowrap">${TimeUtils.formatHM(ItineraryService.totalDuration(itinerary))}</td>
+        <td class="nowrap">€${ItineraryService.price(itinerary, cls).toFixed(2)}</td>
+        <td class="nowrap">${trainTypes}</td>
+        <td class="nowrap">${daysText}</td>
+        <td class="nowrap">${transfers}</td>
+        <td class="path">${pathSegments.join(' → ')}</td>
+        <td>${legsText}</td>
+      `;
+      this.tableBody.appendChild(row);
+    }
+    this.updateResultsCount(itineraries.length);
+  }
+
+  clearResults() {
+    if (!this.tableBody) return;
+    this.tableBody.innerHTML = '';
+    this.updateResultsCount(0);
+  }
+
+  updateSummary(info) {
+    if (!this.summary) return;
+    this.summary.textContent = info || '';
+  }
+
+  updateMessage(message, isError = false) {
+    if (!this.elements.msg) return;
+    if (!message) {
+      this.elements.msg.textContent = '';
+      return;
+    }
+    const kind = isError ? 'error' : 'ok';
+    this.elements.msg.innerHTML = `<span class="${kind}">${message}</span>`;
+  }
+
+  updateKPIs({ routes = 0, cities = 0, direct = 0 }) {
+    if (this.elements.kpiRoutes) this.elements.kpiRoutes.textContent = routes;
+    if (this.elements.kpiCities) this.elements.kpiCities.textContent = cities;
+    if (this.elements.kpiDirect) this.elements.kpiDirect.textContent = direct;
+  }
+
+  resetKPIs() {
+    this.updateKPIs({ routes: 0, cities: 0, direct: 0 });
+  }
+
+  updateResultsCount(count) {
+    if (this.elements.kpiResults) this.elements.kpiResults.textContent = String(count);
+  }
+}
+
+class RailSearchApp {
+  constructor() {
+    this.routes = [];
+    this.lastResults = [];
+    this.elements = {
+      file: document.getElementById('csv'),
+      from: document.getElementById('from'),
+      to: document.getElementById('to'),
+      type: document.getElementById('traintype'),
+      days: document.getElementById('days'),
+      depFrom: document.getElementById('depfrom'),
+      depTo: document.getElementById('depto'),
+      cls: document.getElementById('class'),
+      maxStops: document.getElementById('maxstops'),
+      minXfer: document.getElementById('minxfer'),
+      price1: document.getElementById('price1'),
+      price2: document.getElementById('price2'),
+      sort: document.getElementById('sort'),
+      msg: document.getElementById('msg'),
+      kpiRoutes: document.getElementById('kpi-routes'),
+      kpiCities: document.getElementById('kpi-cities'),
+      kpiDirect: document.getElementById('kpi-direct'),
+      kpiResults: document.getElementById('kpi-results'),
+      resetBtn: document.getElementById('btn-reset'),
+      searchBtn: document.getElementById('btn-search'),
+      exportBtn: document.getElementById('btn-export'),
+    };
+    this.loader = new CSVLoader();
+    this.renderer = new ResultRenderer(this.elements);
+  }
+
+  init() {
+    if (!this.elements.file) return;
+    this.bindEvents();
+    this.renderer.clearResults();
+    this.renderer.resetKPIs();
+  }
+
+  bindEvents() {
+    this.elements.file.addEventListener('change', (event) => this.handleFileChange(event));
+    this.elements.resetBtn?.addEventListener('click', () => this.handleReset());
+    this.elements.searchBtn?.addEventListener('click', () => this.handleSearch());
+    this.elements.exportBtn?.addEventListener('click', () => this.handleExport());
+  }
+
+  async handleFileChange(event) {
+    const file = event.target.files?.[0];
+    this.renderer.updateMessage('');
+    if (!file) {
+      this.routes = [];
+      this.lastResults = [];
+      this.renderer.clearResults();
+      this.renderer.resetKPIs();
+      this.renderer.updateSummary('');
+      return;
+    }
+    try {
+      this.routes = await this.loader.load(file);
+      const citySet = new Set(this.routes.flatMap((route) => [route.dep_city, route.arr_city]));
+      const directPairs = new Set(
+        this.routes.map((route) => `${route.dep_city.toLowerCase()}→${route.arr_city.toLowerCase()}`),
+      );
+      this.renderer.updateKPIs({
+        routes: this.routes.length,
+        cities: citySet.size,
+        direct: directPairs.size,
+      });
+      this.renderer.updateSummary(`Loaded ${this.routes.length} routes across ${citySet.size} cities`);
+    } catch (error) {
+      this.renderer.updateMessage(`Failed to parse CSV: ${String(error)}`, true);
+    }
+  }
+
+  handleReset() {
+    ['from', 'to', 'traintype', 'days', 'depfrom', 'depto', 'price1', 'price2'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    if (this.elements.cls) this.elements.cls.value = 'second';
+    if (this.elements.maxStops) this.elements.maxStops.value = '2';
+    if (this.elements.minXfer) this.elements.minXfer.value = '10';
+    if (this.elements.sort) this.elements.sort.value = 'duration';
+    this.lastResults = [];
+    this.renderer.clearResults();
+    this.renderer.updateSummary('');
+    this.renderer.updateMessage('');
+  }
+
+  buildQuery() {
+    const depCity = this.elements.from?.value.trim() || null;
+    const arrCity = this.elements.to?.value.trim() || null;
+    if (depCity && arrCity && depCity.toLowerCase() === arrCity.toLowerCase()) {
+      this.renderer.updateMessage('Departure and arrival cities must be different.', true);
+      this.renderer.clearResults();
+      this.renderer.updateSummary('');
+      this.lastResults = [];
+      return null;
+    }
+
+    try {
+      const depFrom = this.elements.depFrom?.value ? TimeUtils.parseTime(this.elements.depFrom.value) : null;
+      const depTo = this.elements.depTo?.value ? TimeUtils.parseTime(this.elements.depTo.value) : null;
+      const days = DayUtils.parseInputDays(this.elements.days?.value || '');
+      return {
+        dep_city: depCity,
+        arr_city: arrCity,
+        train_type: this.elements.type?.value.trim() || null,
+        days,
+        dep_from: depFrom,
+        dep_to: depTo,
+        max_price_first: this.elements.price1?.value ? parseFloat(this.elements.price1.value) : null,
+        max_price_second: this.elements.price2?.value ? parseFloat(this.elements.price2.value) : null,
+      };
+    } catch (error) {
+      this.renderer.updateMessage(String(error), true);
+      return null;
+    }
+  }
+
+  handleSearch() {
+    if (!this.routes.length) {
+      this.renderer.updateMessage('Please load a CSV first.', true);
+      return;
+    }
+    const query = this.buildQuery();
+    if (!query) return;
+
+    const filtered = ItineraryService.filterRoutes(this.routes, query);
+    const itineraries = ItineraryService.findItineraries(
+      filtered,
+      query.dep_city || '',
+      query.arr_city || '',
+      parseInt(this.elements.maxStops?.value || '2', 10),
+      parseInt(this.elements.minXfer?.value || '10', 10),
+    );
+    const cls = this.elements.cls?.value || 'second';
+    const sorted = ItineraryService.sort(itineraries, this.elements.sort?.value || 'duration', cls);
+    this.lastResults = sorted;
+    this.renderer.render(sorted, cls);
+    const summary = `${sorted.length} itineraries • From: ${query.dep_city || 'any'} • To: ${
+      query.arr_city || 'any'
+    } • Sorted by ${this.elements.sort?.value || 'duration'}`;
+    this.renderer.updateSummary(summary);
+    this.renderer.updateMessage('');
+  }
+
+  handleExport() {
+    if (!this.lastResults.length) {
+      this.renderer.updateMessage('No results to export.', true);
+      return;
+    }
+    const cls = this.elements.cls?.value || 'second';
+    const rows = this.lastResults.map((itinerary) => ({
+      stops: Math.max(0, itinerary.legs.length - 1),
+      total_duration: TimeUtils.formatHM(ItineraryService.totalDuration(itinerary)),
+      price: ItineraryService.price(itinerary, cls).toFixed(2),
+      train_types: itinerary.legs.map((leg) => leg.train_type || '').filter(Boolean).join(' | '),
+      days: itinerary.legs
+        .map((leg) => {
+          const arr = Array.from(leg.days || []);
+          return arr.length ? arr.join('/') : '';
+        })
+        .join(' | '),
+      transfers: itinerary.transfers.length
+        ? itinerary.transfers.map((minutes) => TimeUtils.formatHM(minutes)).join(' / ')
+        : '',
+      path: [
+        ...itinerary.legs.map(
+          (leg) => `${leg.dep_city}(${String(leg.dep_time.h).padStart(2, '0')}:${String(leg.dep_time.m).padStart(2, '0')})`,
+        ),
+        `${itinerary.legs.at(-1).arr_city}(${String(itinerary.legs.at(-1).arr_time.h).padStart(2, '0')}:${String(
+          itinerary.legs.at(-1).arr_time.m,
+        ).padStart(2, '0')})`,
+      ].join(' -> '),
+      legs: itinerary.legs
+        .map(
+          (leg, index) =>
+            `[${index + 1}] ${leg.dep_city}->${leg.arr_city} ${String(leg.dep_time.h).padStart(2, '0')}:${String(
+              leg.dep_time.m,
+            ).padStart(2, '0')}–${String(leg.arr_time.h).padStart(2, '0')}:${String(leg.arr_time.m).padStart(
+              2,
+              '0',
+            )} (${TimeUtils.formatHM(leg.duration)})`,
+        )
+        .join(' | '),
     }));
     const csv = Papa.unparse(rows);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'rail_results.csv';
-    document.body.appendChild(a); a.click(); a.remove();
+    const anchor = document.createElement('a');
+    anchor.href = URL.createObjectURL(blob);
+    anchor.download = 'rail_results.csv';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  }
 }
 
-// UI bindings
-const els = {
-    file: document.getElementById('csv'),
-    from: document.getElementById('from'),
-    to: document.getElementById('to'),
-    type: document.getElementById('traintype'),
-    days: document.getElementById('days'),
-    depFrom: document.getElementById('depfrom'),
-    depTo: document.getElementById('depto'),
-    cls: document.getElementById('class'),
-    maxStops: document.getElementById('maxstops'),
-    minXfer: document.getElementById('minxfer'),
-    price1: document.getElementById('price1'),
-    price2: document.getElementById('price2'),
-    sort: document.getElementById('sort'),
-    msg: document.getElementById('msg'),
-    kpiRoutes: document.getElementById('kpi-routes'),
-    kpiCities: document.getElementById('kpi-cities'),
-    kpiDirect: document.getElementById('kpi-direct'),
-};
-
-let lastResults = [];
-
-els.file.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    els.msg.textContent = '';
-    if (!file) { ROUTES = []; render([], els.cls.value); return; }
-    try {
-        ROUTES = await loadCSV(file);
-        const cities = new Set(ROUTES.flatMap(r => [r.dep_city, r.arr_city]));
-        els.kpiRoutes.textContent = ROUTES.length;
-        els.kpiCities.textContent = cities.size;
-        // quick stat: how many direct A->B among all routes
-        let direct = 0; const byDep = groupByDep(ROUTES);
-        for (const [k, arr] of byDep) { direct += arr.filter(r => arr.some(x => x.dep_city === r.dep_city && x.arr_city === r.arr_city)).length; break; }
-        els.kpiDirect.textContent = direct;
-        document.getElementById('summary').textContent = `Loaded ${ROUTES.length} routes across ${cities.size} cities`;
-    } catch (err) {
-        els.msg.innerHTML = `<span class="error">Failed to parse CSV: ${String(err)}</span>`;
-    }
-});
-
-document.getElementById('btn-reset').addEventListener('click', () => {
-    ['from', 'to', 'traintype', 'days', 'depfrom', 'depto', 'price1', 'price2'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('class').value = 'second';
-    document.getElementById('maxstops').value = '2';
-    document.getElementById('minxfer').value = '10';
-    document.getElementById('sort').value = 'duration';
-    render([], 'second');
-    document.getElementById('summary').textContent = '';
-    document.getElementById('kpi-results').textContent = '0';
-    els.msg.textContent = '';
-});
-
-document.getElementById('btn-search').addEventListener('click', () => {
-    if (!ROUTES.length) { els.msg.innerHTML = '<span class="error">Please load a CSV first.</span>'; return; }
-    els.msg.textContent = '';
-    const q = {
-        dep_city: els.from.value.trim() || null,
-        arr_city: els.to.value.trim() || null,
-        train_type: els.type.value.trim() || null,
-        days: new Set((els.days.value || '').split(',').map(s => s.trim()).filter(Boolean).map(s => {
-            const k = s.toLowerCase().replace(/[^a-z]/g, '');
-            return DAY_ALIASES[k] || (s.slice(0, 3).charAt(0).toUpperCase() + s.slice(1, 3).toLowerCase());
-        })),
-        dep_from: els.depFrom.value ? parseTime(els.depFrom.value) : null,
-        dep_to: els.depTo.value ? parseTime(els.depTo.value) : null,
-        max_price_first: els.price1.value ? parseFloat(els.price1.value) : null,
-        max_price_second: els.price2.value ? parseFloat(els.price2.value) : null,
-    };
-    const filtered = filterRoutes(ROUTES, q);
-    const itins = findItineraries(filtered, q.dep_city || '', q.arr_city || '', parseInt(els.maxStops.value, 10), parseInt(els.minXfer.value, 10));
-    const cls = els.cls.value;
-    if (els.sort.value === 'price') itins.sort((a, b) => (price(a, cls) - price(b, cls)) || (totalDuration(a) - totalDuration(b)));
-    else itins.sort((a, b) => (totalDuration(a) - totalDuration(b)) || (price(a, cls) - price(b, cls)));
-    lastResults = itins;
-    render(itins, cls);
-    const dep = q.dep_city || 'any', arr = q.arr_city || 'any';
-    document.getElementById('summary').textContent = `${itins.length} itineraries • From: ${dep} • To: ${arr} • Sorted by ${els.sort.value}`;
-});
-
-document.getElementById('btn-export').addEventListener('click', () => {
-    if (!lastResults.length) { els.msg.innerHTML = '<span class="error">No results to export.</span>'; return; }
-    exportCSV(lastResults, els.cls.value);
+document.addEventListener('DOMContentLoaded', () => {
+  const app = new RailSearchApp();
+  app.init();
 });
