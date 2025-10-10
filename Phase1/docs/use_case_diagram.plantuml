@@ -1,0 +1,25 @@
+@startuml
+left to right direction
+actor Client
+
+rectangle "Train Connection System" {
+  usecase "UC-01 Load Schedule Data" as UC01
+  usecase "UC-02 Search for a Connection" as UC02
+  usecase "UC-02a Construct Indirect Connections\n(1–2 stops)" as UC02a
+  usecase "UC-03 Sort Displayed Results" as UC03
+  usecase "UC-04 View Connection Details" as UC04
+  usecase "UC-05 Filter Within Results" as UC05
+}
+
+Client --> UC01
+Client --> UC02
+Client --> UC03
+Client --> UC04
+Client --> UC05
+
+UC02 .> UC02a : <<extends>>
+UC02 --> UC03 : <<allows>>
+UC02 --> UC04 : <<allows>>
+UC02 --> UC05 : <<allows>>
+
+@enduml
