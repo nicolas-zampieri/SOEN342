@@ -36,7 +36,8 @@ Artifacts:
 How to run?
 
 1) Open the index.html file
-![alt text](image.png)
+<img width="1856" height="978" alt="image" src="https://github.com/user-attachments/assets/c89722f3-b5e4-498b-aa25-4dce8c810a47" />
+
 
 2) Upload the desired CSV file
 
