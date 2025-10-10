@@ -1,0 +1,10 @@
+@startuml ExitTerminal
+title End Terminal 
+
+actor User as U
+participant "RailSearchApp" as App
+
+U -> App : closeApplication()
+App -> App : shutdown()
+
+@enduml

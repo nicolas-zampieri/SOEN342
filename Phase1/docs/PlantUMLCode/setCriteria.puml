@@ -1,0 +1,12 @@
+@startuml setCriteria
+title Internal Operation — setCriteria() (Basic)
+
+actor User as U
+participant "RailSearchApp" as App
+participant "ResultRenderer" as Renderer
+
+U -> App : setCriteria(depCity, arrCity, trainType, days,\n depFrom?, depTo?, maxPriceFirst?, maxPriceSecond?)
+App -> App : buildQuery()
+App -> Renderer : updateMessage("Criteria accepted")
+
+@enduml
