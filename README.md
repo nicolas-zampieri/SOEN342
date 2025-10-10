@@ -1,4 +1,5 @@
 # SOEN342
+
 SOEN 342 group project 2025
 
 Members:
@@ -9,7 +10,7 @@ Members:
 
     Marc Fadous 40276612
 
-Iteration I: 
+Iteration I:
 
 Loads train routes from a CSV file and lets you search for direct and
 indirect connections (up to 2 stops). Supports filtering by most fields
@@ -29,6 +30,7 @@ Usage (CLI):
     python rail_search.py --csv eu_rail_network.csv --from "Munich" --to "Zurich" --class first --max-stops 1
 
 Notes & Assumptions:
+
 - Times are interpreted as HH:MM (24h). If arrival < departure, we assume arrival is next day.
 - For multi-leg journeys (connections), we require that each next leg departs on the SAME DAY
   as the previous leg's arrival and at least min_transfer minutes after arrival.
