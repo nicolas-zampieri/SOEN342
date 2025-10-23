@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>EU Rail Search — Single Page</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="style-2.css" rel="stylesheet"/>
+</head>
+<body>
+<header>
+<div class="wrap">
+<h1>EU Rail Search</h1>
+<p class="lead">Upload <code>eu_rail_network.csv</code>, set filters, and find direct or connected itineraries (up
+        to 2 stops).</p>
+</div>
+</header>
+<main class="wrap">
+<section class="card">
+<div class="grid">
+<div>
+<label for="csv">CSV File</label>
+<input accept=".csv" id="csv" type="file"/>
+<div class="hint">Expected headers: Route ID, Departure City, Arrival City, Departure Time, Arrival Time,
+            Train Type, Days of Operation, First Class ticket rate (in euro), Second Class ticket rate (in euro)</div>
+</div>
+</div>
+<div class="kpi">
+<div class="card">
+<div class="muted">Routes Loaded</div>
+<div class="num" id="kpi-routes">0</div>
+</div>
+<div class="card">
+<div class="muted">Cities</div>
+<div class="num" id="kpi-cities">0</div>
+</div>
+<div class="card">
+<div class="muted">Direct A→B</div>
+<div class="num" id="kpi-direct">0</div>
+</div>
+<div class="card">
+<div class="muted">Results</div>
+<div class="num" id="kpi-results">0</div>
+</div>
+</div>
+<div class="grid cols-3">
+<div>
+<label for="from">From</label>
+<input id="from" placeholder="e.g., Paris"/>
+</div>
+<div>
+<label for="to">To</label>
+<input id="to" placeholder="e.g., Berlin"/>
+</div>
+<div>
+<label for="traintype">Train Type</label>
+<input id="traintype" placeholder="e.g., TGV, IC"/>
+</div>
+</div>
+<div class="grid cols-4">
+<div>
+<label for="days">Days (comma‑sep)</label>
+<input id="days" placeholder="Mon,Wed,Fri"/>
+</div>
+<div>
+<label for="depfrom">Dep from</label>
+<input id="depfrom" placeholder="HH:MM"/>
+</div>
+<div>
+<label for="depto">Dep to</label>
+<input id="depto" placeholder="HH:MM"/>
+</div>
+<div>
+<label for="class">Class</label>
+<select id="class">
+<option selected="" value="second">Second</option>
+<option value="first">First</option>
+</select>
+</div>
+</div>
+<div class="grid cols-4">
+<div>
+<label for="price1">Max First‑Class (per leg)</label>
+<input id="price1" min="0" step="0.01" type="number"/>
+</div>
+<div>
+<label for="price2">Max Second‑Class (per leg)</label>
+<input id="price2" min="0" step="0.01" type="number"/>
+</div>
+<div>
+<label for="maxstops">Max Stops</label>
+<select id="maxstops">
+<option value="0">0 (direct)</option>
+<option value="1">1</option>
+<option selected="" value="2">2</option>
+</select>
+</div>
+<div>
+<label for="minxfer">Min Transfer (min)</label>
+<input id="minxfer" min="0" type="number" value="10"/>
+</div>
+</div>
+<div class="controls" style="margin-top:8px">
+<button class="primary" id="btn-search">Search</button>
+<button class="secondary" id="btn-reset">Reset</button>
+<select class="pill" id="sort" style="max-width:220px">
+<option selected="" value="duration">Sort: Duration</option>
+<option value="price">Sort: Price</option>
+</select>
+<button class="secondary" id="btn-export">Export Results CSV</button>
+</div>
+<div class="hint" id="msg" style="margin-top:8px"></div>
+</section>
+<section class="card">
+<div class="flex" style="justify-content:space-between; align-items:center">
+<h2 style="margin:0;font-size:18px">Results</h2>
+<div class="muted" id="summary"></div>
+</div>
+<div style="overflow:auto; max-height:70vh; margin-top:10px">
+<table class="table" id="results">
+<thead>
+<tr>
+<th>Stops</th>
+<th>Total Duration</th>
+<th>Price (chosen class)</th>
+<th>Train Type</th>
+<th>Days of Operation</th>
+<th>Transfers</th>
+<th>Path</th>
+<th>Legs</th><th>Action</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+</section>
+<section class="card">
+<h2 style="margin:0 0 10px;font-size:18px">Book a Trip</h2>
+<div class="grid cols-4">
+<div>
+<label for="traveldate">Travel Date</label>
+<input id="traveldate" type="date"/>
+<div class="hint">Used to classify current vs. past trips and to validate day-of-week operations.</div>
+</div>
+<div>
+<label for="selected-connection">Selected Connection</label>
+<input disabled="" id="selected-connection" placeholder="Select an itinerary from the results"/>
+</div>
+<div>
+<label for="fare-class">Fare Class</label>
+<select id="fare-class">
+<option selected="" value="second">Second</option>
+<option value="first">First</option>
+</select>
+</div>
+<div>
+<label> </label>
+<button class="secondary" id="btn-clear-selection">Clear Selection</button>
+</div>
+</div>
+<div class="grid">
+<div class="controls">
+<div style="flex:1">
+<label for="trav-name">Traveller Name</label>
+<input id="trav-name" placeholder="e.g., Alice Rossi"/>
+</div>
+<div style="max-width:140px">
+<label for="trav-age">Age</label>
+<input id="trav-age" min="0" type="number"/>
+</div>
+<div style="max-width:240px; flex:1">
+<label for="trav-id">Government ID</label>
+<input id="trav-id" placeholder="e.g., X1234567"/>
+</div>
+<div style="max-width:160px">
+<label> </label>
+<button class="secondary" id="btn-add-traveller">Add Traveller</button>
+</div>
+</div>
+<div>
+<table class="table" id="travellers-table">
+<thead>
+<tr>
+<th>#</th>
+<th>Name</th>
+<th>Age</th>
+<th>ID</th>
+<th></th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+<div class="controls">
+<button class="primary" id="btn-book">Book Trip</button>
+<div class="hint" id="book-msg"></div>
+</div>
+</div>
+</section>
+<section class="card">
+<h2 style="margin:0 0 10px;font-size:18px">View Trips</h2>
+<div class="controls">
+<div style="flex:1">
+<label for="view-lastname">Last Name</label>
+<input id="view-lastname" placeholder="e.g., Rossi"/>
+</div>
+<div style="flex:1">
+<label for="view-id">Government ID</label>
+<input id="view-id" placeholder="e.g., X1234567"/>
+</div>
+<div style="max-width:160px">
+<label> </label>
+<button class="secondary" id="btn-view-trips">View</button>
+</div>
+</div>
+<div class="grid">
+<div>
+<h3 style="margin:8px 0">Upcoming / Today</h3>
+<table class="table" id="trips-upcoming">
+<thead>
+<tr>
+<th>Trip ID</th>
+<th>Date</th>
+<th>Passengers</th>
+<th>Itinerary</th>
+<th>Tickets</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+<div>
+<h3 style="margin:8px 0">History</h3>
+<table class="table" id="trips-history">
+<thead>
+<tr>
+<th>Trip ID</th>
+<th>Date</th>
+<th>Passengers</th>
+<th>Itinerary</th>
+<th>Tickets</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+</div>
+</section>
+</main>
+<!-- Papa Parse for robust CSV loading (tiny, CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="main-2.js"></script>
+</body>
+</html>
