@@ -1,63 +1,40 @@
-@startuml bookTrip
-title Internal Operation — bookTrip() Complete Flow
+@startuml BookTrip
+title Book a Trip Sequence Diagram
 
-actor User as U
+actor Client
+participant "RailSearchApp (UI)" as UI
 participant "BookingSystem" as BS
-participant "BookingStorage" as Storage
-participant "Trip" as T
-participant "Reservation" as R
-participant "Ticket" as TK
-participant "ResultRenderer" as Renderer
+participant "Trip"
+participant "Reservation"
+participant "Ticket"
+participant "BookingStorage" as DB
 
-U -> BS : bookTrip()
+Client -> UI: Select connection + Enter traveller info
+UI -> BS: bookTrip(connection, travellers)
 
-== Validation Phase ==
-BS -> BS : validate()
+activate BS
+BS -> BS: validateInput(connection, travellers)
 
-alt No itinerary selected
-    BS -> Renderer : error("Select an itinerary from results first.")
-    return
+alt valid input
+  BS -> Trip: createTrip(connection)
+  Trip --> BS: trip instance
+
+  loop for each traveller
+    BS -> Reservation: createReservation(traveller, connection)
+    Reservation --> BS: reservation
+    BS -> Ticket: createTicket(reservation)
+    Ticket --> BS: ticket
+    BS -> Trip: add(reservation, ticket)
+  end
+
+  BS -> DB: saveTrip(trip)
+  DB --> BS: confirmation
+
+  BS --> UI: success(tripId, tickets)
+else invalid
+  BS --> UI: error("invalid input")
 end
 
-alt No travel date
-    BS -> Renderer : error("Pick a travel date.")
-    return
-end
-
-alt No travellers
-    BS -> Renderer : error("Add at least one traveller.")
-    return
-end
-
-== Trip Creation Phase ==
-BS -> BS : tripId = randomAlphaId()
-BS -> T ** : new Trip(tripId, dateISO, selectedItinerary, fareClass)
-
-== Reservation & Ticket Generation ==
-loop For each traveller
-    BS -> BS : reservationId = uuid4()
-    BS -> R ** : new Reservation(reservationId, traveller, itineraryKey, fareClass)
-    BS -> T : addReservation(reservation)
-    
-    BS -> BS : ticketNum = randomTicketNumber()
-    BS -> TK ** : new Ticket(ticketNum, reservationId)
-    BS -> T : addTicket(ticket)
-end
-
-== Persistence ==
-BS -> Storage : pushTrip(trip)
-Storage -> Storage : loadAll()
-Storage -> Storage : trips.push(newTrip)
-Storage -> Storage : saveAll(trips)
-
-== Success Response ==
-BS -> Renderer : info("Trip booked! Trip ID {tripId} with {count} reservation(s).")
-
-== Reset UI State ==
-BS -> BS : travellers = []
-BS -> BS : renderTravellers()
-BS -> BS : clearSelection()
-BS -> BS : selectedItinerary = null
-BS -> BS : selectedKey = null
-
+UI --> Client: show confirmation or error
+deactivate BS
 @enduml

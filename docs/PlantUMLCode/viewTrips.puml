@@ -1,80 +1,26 @@
-@startuml viewTrips
-title Internal Operation — viewTrips() Trip Retrieval Flow
+@startuml viewtrips
+title View Trips Operation Sequence  
 
-actor User as U
+actor Client
+participant "RailSearchApp (UI)" as UI
 participant "BookingSystem" as BS
-participant "BookingStorage" as Storage
-participant "DOM Elements" as DOM
+participant "BookingStorage" as DB
 
-U -> BS : viewTrips()
+Client -> UI: Enter lastName, govId
+UI -> BS: viewTrips(lastName, govId)
 
-== Input Validation ==
-BS -> BS : lastName = viewInputs.lastName.value.trim()
-BS -> BS : govId = viewInputs.govId.value.trim()
+activate BS
+BS -> DB: findByLastNameAndId(lastName, govId)
+DB --> BS: trips[]
 
-alt Missing required inputs
-    BS -> BS : return (no action if empty)
-    note right: Silent return if lastName or govId empty
-    return
+BS -> BS: partitionTrips(trips)\n-- current/future vs history --
+
+alt any trips found
+  BS --> UI: success({current: [...], history: [...]})
+else none found
+  BS --> UI: error(\"no trips for provided credentials\")
 end
+deactivate BS
 
-== Trip Retrieval ==
-BS -> Storage : findByLastNameAndId(lastName, govId)
-
-Storage -> Storage : trips = loadAll()
-Storage -> Storage : matches = []
-
-loop For each trip in storage
-    loop For each reservation in trip
-        Storage -> Storage : extractedLastName = passenger.name.split(' ').pop().toLowerCase()
-        Storage -> Storage : extractedGovId = passenger.id.toLowerCase()
-        
-        alt lastName matches AND govId matches
-            Storage -> Storage : matches.push(trip)
-            break
-        end
-    end
-end
-
-Storage --> BS : matchingTrips[]
-
-== Trip Classification ==
-BS -> BS : now = new Date()
-BS -> BS : upcomingTrips = []
-BS -> BS : historyTrips = []
-
-loop For each matching trip
-    BS -> BS : travelDate = new Date(trip.dateISO + 'T00:00:00')
-    BS -> BS : todayDate = new Date(now.toDateString())
-    
-    alt travelDate < todayDate
-        BS -> BS : historyTrips.push(renderTripRow(trip))
-    else
-        BS -> BS : upcomingTrips.push(renderTripRow(trip))
-    end
-end
-
-== UI Update ==
-alt Has upcoming trips
-    BS -> DOM : upTbody.innerHTML = upcomingTrips.join('')
-else No upcoming trips
-    BS -> DOM : upTbody.innerHTML = '<tr><td colspan="5" class="muted">No upcoming trips.</td></tr>'
-end
-
-alt Has history trips
-    BS -> DOM : hiTbody.innerHTML = historyTrips.join('')
-else No history trips
-    BS -> DOM : hiTbody.innerHTML = '<tr><td colspan="5" class="muted">No past trips.</td></tr>'
-end
-
-== Trip Row Rendering ==
-note over BS
-    renderTripRow(trip) creates:
-    - Trip ID
-    - Travel Date (ISO)
-    - Passenger Names (comma-separated)
-    - Itinerary Summary (dep->arr with times)
-    - Ticket Numbers (as badges)
-end note
-
+UI --> Client: Show trips (tabs: Current/Future, History)
 @enduml
