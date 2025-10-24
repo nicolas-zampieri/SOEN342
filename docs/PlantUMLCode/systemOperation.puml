@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 @startuml systemOperation
-=======
-@startuml
->>>>>>> main
 class "System" {
 
     + accessTerminal(): void
