@@ -51,6 +51,52 @@ class Query {
   +max_price_second : number?
 }
 
+class Client {
+  +client_id : string
+  +last_name : string
+  +first_name : string
+}
+
+class Traveller {
+  +name : string
+  +age : int
+  +id : string
+}
+
+class Trip {
+  +trip_id : string
+  +client : Client
+  +reservations : List<Reservation>
+  +booking_date : Date
+  +createTrip()
+  +addReservation()
+}
+
+class Reservation {
+  +ticket : Ticket
+  +traveller : Traveller
+  +route : Route
+  +createReservation()
+}
+
+class Ticket {
+  +ticket_id : int
+  +class_type : Class
+  +price : number
+  +generateTicket()
+}
+
+class BookingService {
+  +bookTrip(travellers, route) : Trip
+  +validateTravellerCredentials() : boolean
+}
+
+class TripViewService {
+  +getCurrentTrips(lastName, clientId) : List<Trip>
+  +getTripHistory(lastName, clientId) : List<Trip>
+  +verifyClientIdentity() : boolean
+}
+
 class ItineraryService
 class DayUtils
 class TimeUtils
@@ -64,14 +110,30 @@ Route "1" *-- "1" TimeOfDay : dep_time
 Route "1" *-- "1" TimeOfDay : arr_time
 Route "1" o-- "0..*" Day : days
 
+Trip "1" *-- "1..*" Reservation : reservations
+Trip "1" o-- "1" Client : client
+Reservation "1" *-- "1" Ticket : ticket
+Reservation "1" o-- "1" Traveller : traveller
+Reservation "1" o-- "1" Route : route
+Ticket "1" o-- "1" Class : class_type
+
 CSVLoader --> HeaderNormalizer
 RailSearchApp --> CSVLoader
 RailSearchApp --> ResultRenderer
 RailSearchApp --> ItineraryService
+RailSearchApp --> BookingService
+RailSearchApp --> TripViewService
 ItineraryService --> Route
 ItineraryService --> Itinerary
 ItineraryService --> Query
 ItineraryService --> Class
+BookingService --> Trip
+BookingService --> Reservation
+BookingService --> Ticket
+BookingService --> Client
+BookingService --> Traveller
+TripViewService --> Trip
+TripViewService --> Client
 DayUtils --> Day
 TimeUtils --> TimeOfDay
 @enduml
