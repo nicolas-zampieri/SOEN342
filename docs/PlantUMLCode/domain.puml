@@ -68,33 +68,27 @@ class Trip {
   +client : Client
   +reservations : List<Reservation>
   +booking_date : Date
-  +createTrip()
-  +addReservation()
 }
 
 class Reservation {
   +ticket : Ticket
   +traveller : Traveller
   +route : Route
-  +createReservation()
 }
 
 class Ticket {
   +ticket_id : int
   +class_type : Class
   +price : number
-  +generateTicket()
 }
 
 class BookingService {
   +bookTrip(travellers, route) : Trip
-  +validateTravellerCredentials() : boolean
 }
 
 class TripViewService {
   +getCurrentTrips(lastName, clientId) : List<Trip>
   +getTripHistory(lastName, clientId) : List<Trip>
-  +verifyClientIdentity() : boolean
 }
 
 class ItineraryService
