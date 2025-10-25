@@ -1,0 +1,40 @@
+@startuml BookTrip
+title Book a Trip Sequence Diagram
+
+actor Client
+participant "RailSearchApp (UI)" as UI
+participant "BookingSystem" as BS
+participant "Trip"
+participant "Reservation"
+participant "Ticket"
+participant "BookingStorage" as DB
+
+Client -> UI: Select connection + Enter traveller info
+UI -> BS: bookTrip(connection, travellers)
+
+activate BS
+BS -> BS: validateInput(connection, travellers)
+
+alt valid input
+  BS -> Trip: createTrip(connection)
+  Trip --> BS: trip instance
+
+  loop for each traveller
+    BS -> Reservation: createReservation(traveller, connection)
+    Reservation --> BS: reservation
+    BS -> Ticket: createTicket(reservation)
+    Ticket --> BS: ticket
+    BS -> Trip: add(reservation, ticket)
+  end
+
+  BS -> DB: saveTrip(trip)
+  DB --> BS: confirmation
+
+  BS --> UI: success(tripId, tickets)
+else invalid
+  BS --> UI: error("invalid input")
+end
+
+UI --> Client: show confirmation or error
+deactivate BS
+@enduml

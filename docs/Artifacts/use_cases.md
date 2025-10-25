@@ -1,8 +1,8 @@
-# Use Cases — Iteration 1 (Simplified)
+# Use Cases — Iteration 2 (Simplified)
 
 *SOEN 342 – Train Connection System*  
 
-This document describes the three main use cases represented in the diagram.
+This document describes the 5 main use cases represented in the diagram.
 
 ---
 
@@ -59,7 +59,7 @@ This document describes the three main use cases represented in the diagram.
 
 ---
 
-## UC-03 — Displayed Results
+## UC-03 — View Results
 **Primary Actor:** Client  
 
 **Preconditions:**  
@@ -85,3 +85,54 @@ This document describes the three main use cases represented in the diagram.
 - Mixed results (direct + indirect) → Show transfer times and total trip duration.  
 
 ---
+
+## UC-04 — Book a Trip
+
+**Primary Actor:** Client  
+
+**Preconditions:**  
+
+- UC-02 completed (a connection has been searched and selected).  
+
+**Postconditions:**  
+
+- A trip is successfully booked with one or more reservations.  
+- Tickets are generated for each reservation.  
+
+**Main Success Scenario:**  
+
+1. Client selects a connection from the search results.  
+2. Client enters traveller credentials (name, age, ID).  
+3. System validates the input and creates a trip with a unique ID.  
+4. System generates reservations and tickets for each traveller.  
+5. System confirms the booking.  
+
+**Extensions:**  
+
+- Invalid traveller credentials → System shows error and asks client to re-enter details.   
+
+---
+
+## UC-05 — View Trips
+
+**Primary Actor:** Client  
+
+**Preconditions:**  
+
+- UC-04 completed (at least one trip has been booked).  
+
+**Postconditions:**  
+
+- Client can view current and past trips.  
+
+**Main Success Scenario:**  
+
+1. Client enters their last name and ID.  
+2. System verifies the client’s identity.  
+3. System displays current trips (today/future connections).  
+4. System displays past trips (history collection).  
+
+**Extensions:**  
+
+- No trips found → System notifies client with “No trips available.”  
+- Invalid credentials → System shows error and asks client to re-enter details.

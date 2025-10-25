@@ -17,6 +17,10 @@ indirect connections (up to 2 stops). Supports filtering by most fields
 (except route ID), computes trip + transfer durations, and sorts results
 by duration or price.
 
+Iteration II:
+
+Added selecting a trip, creating a ticket/trip and viewing of upcoming and past trips
+
 Notes & Assumptions:
 
 - Times are interpreted as HH:MM (24h). If arrival < departure, we assume arrival is next day.
@@ -31,7 +35,7 @@ Notes & Assumptions:
 Artifacts:
 
 - All artifacts were completed prior to coding however they were uploaded onto GIT after the code. 
-- The artifacts that we have are: Use case diagram, use cases, domain model, system sequence diagram, system operations, operation contract, interaction diagram and class diagram which were completed in thier respective order
+- The artifacts that we have are: Use case diagram, use cases, domain model, system sequence diagram, system operations, operation contract, interaction diagram and class diagram which were completed in their respective order
 
 How to run?
 

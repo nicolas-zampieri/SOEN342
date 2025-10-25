@@ -243,3 +243,58 @@ button.secondary {
         grid-template-columns: repeat(2, 1fr)
     }
 }
+
+/* Iteration 2 additions */
+input[disabled] {
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+.table td .btn-link {
+  border: 1px solid #30408b;
+  background: #101a3d;
+  padding: 6px 10px;
+  border-radius: 999px;
+  text-decoration: none;
+  display: inline-block;
+}
+
+
+/* Fix: prevent sticky search card from covering content below */
+.card.sticky, .sticky {
+  position: sticky;
+  top: 10px;
+  align-self: start;
+  max-height: calc(100vh - 20px);
+  overflow: auto;
+}
+
+/* On small screens, turn off sticky to avoid layout overlap */
+@media (max-width: 900px) {
+  .card.sticky, .sticky {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+
+/* === Iteration 2: single-column stacked layout === */
+main.wrap {
+  display: block;
+}
+
+main.wrap .card {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Remove any leftover sticky positioning */
+.card.sticky, .sticky {
+  position: static !important;
+  top: auto !important;
+}
+
+/* Ensure natural vertical stacking with spacing */
+.card + .card {
+  margin-top: 20px;
+}
