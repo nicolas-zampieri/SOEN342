@@ -1,8 +1,8 @@
-# Use Cases — Iteration 1 (Simplified)
+# Use Cases — Iteration 2 (Simplified)
 
 *SOEN 342 – Train Connection System*  
 
-This document describes the three main use cases represented in the diagram.
+This document describes the 5 main use cases represented in the diagram.
 
 ---
 
@@ -59,7 +59,7 @@ This document describes the three main use cases represented in the diagram.
 
 ---
 
-## UC-03 — Displayed Results
+## UC-03 — View Results
 **Primary Actor:** Client  
 
 **Preconditions:**  
@@ -109,8 +109,7 @@ This document describes the three main use cases represented in the diagram.
 
 **Extensions:**  
 
-- Invalid traveller credentials → System shows error and asks client to re-enter details.  
-- Connection no longer available → System notifies client and suggests alternatives.  
+- Invalid traveller credentials → System shows error and asks client to re-enter details.   
 
 ---
 
