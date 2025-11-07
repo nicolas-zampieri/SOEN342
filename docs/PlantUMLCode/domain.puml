@@ -146,6 +146,7 @@ Route "1" *-- "1" TimeOfDay : dep_time
 Route "1" *-- "1" TimeOfDay : arr_time
 Route "1" o-- "0..*" Day : days
 
+
 Trip "1" *-- "1..*" Reservation : reservations
 Trip "1" o-- "1" Client : client
 Reservation "1" *-- "1" Ticket : ticket
@@ -172,4 +173,10 @@ TripViewService --> Trip
 TripViewService --> Client
 DayUtils --> Day
 TimeUtils --> TimeOfDay
+
+RouteDB <-- Route : maps_to
+ClientDB <-- Traveller : maps_to
+TripDB <-- Trip : maps_to
+TravelDB <-- Reservation : maps_to
+
 @enduml
