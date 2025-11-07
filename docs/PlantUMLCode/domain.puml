@@ -18,6 +18,48 @@ class Class {
   second
 }
 
+entity "RouteDB" as RouteDB {
+  *route_id : <<PK>>
+  *departure_city
+  *arrival_city
+  *departure_time
+  *arrival_time
+  *train_type
+  *days_of_op
+  *price_first_class
+  *price_second_class
+}
+
+entity "TravellerDB" as ClientDB {
+  *traveller_id : <<PK>>
+  *first_name
+  *last_name
+  *gov_id
+  *age
+}
+
+entity "TripDB" as TripDB {
+  *trip_id : <<PK>>
+  *travel_date
+  *origin
+  *destination
+  *stops
+  *total_duration
+  *fare_class
+  *path_summary
+  *created_at
+}
+
+entity "TripTravellerDB" as TravelDB {
+  *(trip_id, traveller_id) : <<PK>>
+  *trip_id : <<FK>>
+  *traveller_id : <<FK>>
+  *trip_id
+  *traveller_id
+  *seat_class
+  *ticket_price
+}
+
 class TimeOfDay {
   +h : int
   +m : int
