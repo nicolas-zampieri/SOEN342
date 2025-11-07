@@ -11,52 +11,52 @@ skinparam entity {
   FontName Helvetica
 }
 
-entity "RouteDB" as Route {
-  * route_id : TEXT <<PK>>
+entity "RouteDB" as Route <<table>> {
+  * route_id : <<PK>>
   --
-  departure_city : TEXT
-  arrival_city : TEXT
-  departure_time : TEXT
-  arrival_time : TEXT
-  train_type : TEXT
-  days_of_op : TEXT
-  first_class : REAL
-  second_class : REAL
+  departure_city 
+  arrival_city 
+  departure_time  
+  arrival_time 
+  train_type 
+  days_of_op 
+  first_class 
+  second_class 
 }
 
-entity "TravellerDB" as Traveller {
-  * traveller_id : INTEGER <<PK>>
+entity "TravellerDB" as Traveller <<table>> {
+  * traveller_id : <<PK>>
   --
-  first_name : TEXT
-  last_name : TEXT
-  gov_id : TEXT <<UNIQUE>>
-  age : INTEGER
+  first_name 
+  last_name 
+  gov_id 
+  age 
 }
 
-entity "TripDB" as Trip {
-  * trip_id : INTEGER <<PK>>
+entity "TripDB" as Trip <<table>> {
+  * trip_id : <<PK>>
   --
-  travel_date : TEXT
-  origin : TEXT
-  destination : TEXT
-  stops : INTEGER
-  total_duration : INTEGER
-  fare_class : TEXT
-  path_summary : TEXT
-  created_at : TEXT
+  travel_date 
+  origin 
+  destination 
+  stops 
+  total_duration 
+  fare_class 
+  path_summary 
+  created_at 
 }
 
-entity "TripTravellerDB" as TripTraveller {
-  * trip_id : INTEGER <<FK>>
-  * traveller_id : INTEGER <<FK>>
+entity "TripTravellerDB" as TripTraveller <<table>> {
+  * trip_id  <<FK>>
+  * traveller_id  <<FK>>
   --
-  seat_class : TEXT
-  ticket_price : REAL
+  seat_class 
+  ticket_price 
 }
 
 '-------------------- Relationships --------------------'
 Route "0..*" -[hidden]-> Trip : unrelated (routes are reference data)
-Trip "1" ->"TripTraveller" 
-Traveller "1..*" -> "TripTraveller" 
+Trip "1" <--"TripTraveller" 
+Traveller "1..*" <-- "TripTraveller" 
 
 @enduml
