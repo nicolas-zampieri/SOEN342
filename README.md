@@ -49,4 +49,56 @@ How to run?
 
 4) Enjoy a fully planned itinerary:)
 
+Iteration III:
 
+This project implements **Iteration 3** of the EU Rail Planner assignment.
+
+It introduces full **database persistence**, a **Flask API backend**, and a **front-end web app** that together provide:
+
+- A searchable **route catalog** (from SQLite DB or CSV fallback).  
+- **Layover-aware** itinerary generation (Iteration 3 policy).  
+- **Trip booking** with unique numerical Trip IDs.  
+- **Traveller management** and **trip lookup** by passenger.  
+- **Exportable search results** to CSV.  
+
+---
+
+Endpoints:
+
+GET /api/routes: Returns all available routes.
+POST /api/trips: Books a trip.
+
+## 🧩 1. Prerequisites
+
+Before starting, make sure you have:
+
+- **Python 3.9+**
+- **VS Code** (recommended)
+- **pip** (Python package manager)
+- **SQLite** (already included with Python)
+- Optional: **VS Code Live Server extension** for frontend preview
+
+2. Environment Setup
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+3. Install Dependencies
+
+pip install flask flask-cors
+
+4. Create Database
+
+python init_db.py
+
+Should receive: Database created and schema applied -> railway.db
+
+5. Load Route
+
+python load_routes.py
+
+7. Run Backend
+
+python server.py
+
+8. Run frontend
