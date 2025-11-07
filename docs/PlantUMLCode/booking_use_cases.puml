@@ -1,5 +1,5 @@
-@startuml
-
+@startuml Booking Case
+title Book a Trip Use Case
 
 left to right direction
 

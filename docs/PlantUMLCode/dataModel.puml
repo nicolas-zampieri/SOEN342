@@ -1,0 +1,62 @@
+@startuml data
+!theme plain
+hide circle
+hide methods
+hide stereotypes
+skinparam linetype ortho
+skinparam entity {
+  BackgroundColor White
+  BorderColor Black
+  FontSize 14
+  FontName Helvetica
+}
+
+entity "RouteDB" as Route <<table>> {
+  * route_id : <<PK>>
+  --
+  departure_city 
+  arrival_city 
+  departure_time  
+  arrival_time 
+  train_type 
+  days_of_op 
+  first_class 
+  second_class 
+}
+
+entity "TravellerDB" as Traveller <<table>> {
+  * traveller_id : <<PK>>
+  --
+  first_name 
+  last_name 
+  gov_id 
+  age 
+}
+
+entity "TripDB" as Trip <<table>> {
+  * trip_id : <<PK>>
+  --
+  travel_date 
+  origin 
+  destination 
+  stops 
+  total_duration 
+  fare_class 
+  path_summary 
+  created_at 
+}
+
+entity "TripTravellerDB" as TripTraveller <<table>> {
+  * trip_id  <<FK>>
+  * traveller_id  <<FK>>
+  --
+  seat_class 
+  ticket_price 
+}
+
+'-------------------- Relationships --------------------'
+Route "0..*" -[hidden]-> Trip : unrelated (routes are reference data)
+Trip "1" <--"TripTraveller" 
+Traveller "1..*" <-- "TripTraveller" 
+
+@enduml
