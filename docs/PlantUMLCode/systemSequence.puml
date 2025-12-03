@@ -4,12 +4,14 @@ title System Sequence Diagram for EU Rail Search & Booking System
 actor User as U
 participant "Rail Search System" as System
 
-== Terminal Access & Data Loading ==
-U -> System : accessTerminal()
-System --> U : terminalAccessed()
+== Data Loading ==
+U -> System : loadRoutesFromAPI()
+System --> U : routesLoaded(routesCount, cityCount, directPairs)
 
-U -> System : loadCSV(file)
-System --> U : CSVLoaded(routesCount, cityCount, directPairs)
+opt CSV Fallback
+    U -> System : loadCSV(file)
+    System --> U : CSVLoaded(routesCount, cityCount, directPairs)
+end
 
 == Search Operations ==
 loop Search Process
@@ -30,7 +32,7 @@ loop Search Process
     end
 end
 
-== Booking Operations (Iteration 2) ==
+== Booking Operations (Iteration 3 - Backend Connected) ==
 opt Booking Process
     U -> System : selectItinerary(itinerary)
     System --> U : itinerarySelected(summary)
@@ -51,8 +53,8 @@ opt Booking Process
         end
     end
     
-    U -> System : bookTrip()
-    System --> U : tripBooked(tripId, reservationIds[], ticketNumbers[])
+    U -> System : bookSelectedTrip()
+    System --> U : tripBooked(tripId)
     
     opt Clear Selection
         U -> System : clearSelection()
@@ -62,13 +64,9 @@ end
 
 == Trip Management ==
 opt View Trips
-    U -> System : viewTrips(lastName, govId)
+    U -> System : fetchAndRenderTrips(lastName, govId)
     System --> U : tripsRetrieved(upcomingTrips[], historyTrips[])
 end
-
-== Terminal Exit ==
-U -> System : terminalExited()
-System --> U : terminalClosed()
 
 @enduml
 

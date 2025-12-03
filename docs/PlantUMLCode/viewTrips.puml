@@ -2,25 +2,27 @@
 title View Trips Operation Sequence  
 
 actor Client
-participant "RailSearchApp (UI)" as UI
-participant "BookingSystem" as BS
-participant "BookingStorage" as DB
+participant "RailSearchApp" as App
+participant "TripViewService" as TripSvc
+participant "Backend API" as API
+participant "ResultRenderer" as R
 
-Client -> UI: Enter lastName, govId
-UI -> BS: viewTrips(lastName, govId)
+Client -> App: fetchAndRenderTrips()
+App -> App: Get lastName, govId from inputs
 
-activate BS
-BS -> DB: findByLastNameAndId(lastName, govId)
-DB --> BS: trips[]
+activate App
+App -> TripSvc: fetchTrips(lastName, govId)
 
-BS -> BS: partitionTrips(trips)\n-- current/future vs history --
+activate TripSvc
+TripSvc -> API: GET /api/trips?last_name=...&gov_id=...
+API --> TripSvc: {upcoming: [...], history: [...]}
+TripSvc --> App: tripData
+deactivate TripSvc
 
-alt any trips found
-  BS --> UI: success({current: [...], history: [...]})
-else none found
-  BS --> UI: error(\"no trips for provided credentials\")
-end
-deactivate BS
+App -> R: renderTripsTable("trips-upcoming", tripData.upcoming)
+App -> R: renderTripsTable("trips-history", tripData.history)
+App -> R: updateBookMessage("", "hint")
+deactivate App
 
-UI --> Client: Show trips (tabs: Current/Future, History)
+App --> Client: Display trips (Upcoming/History tables)
 @enduml

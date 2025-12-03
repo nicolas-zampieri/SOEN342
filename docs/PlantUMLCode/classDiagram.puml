@@ -1,5 +1,5 @@
 @startuml classDiagram
-title Rail Search — Class Diagram
+title EU Rail Search — Class Diagram (Iteration 3 - Backend Connected)
 left to right direction
 skinparam classAttributeIconSize 0
 
@@ -12,10 +12,9 @@ enum Day {
   Fri
   Sat
   Sun
-  Daily
 }
 
-class Class {
+enum ClassType {
   <<enumeration>>
   first
   second
@@ -23,207 +22,308 @@ class Class {
 
 ' ==== Value Objects ====
 class TimeOfDay {
+  <<ValueObject>>
+  +minutes : int
   +h : int
   +m : int
-  +minutes() : int
+  --
+  +{static} fromString(str : string) : TimeOfDay
+  +toString() : string
 }
 
-' ==== Domain Entities ====
+class Transfer {
+  <<ValueObject>>
+  +city : string
+  +layover : int
+}
+
+' ==== Domain Entities (Client-Side JavaScript) ====
 class Route {
+  <<Entity>>
   +route_id : string
   +dep_city : string
   +arr_city : string
   +dep_time : TimeOfDay
   +arr_time : TimeOfDay
   +train_type : string
-  +days : Set<Day>
+  +days : string[]
+  +daysStr : string
   +price_first : number
   +price_second : number
-  +duration (): int
+  +duration : int
+  --
+  +{static} parsePrice(val) : number
+  +{static} fromBackend(row) : Route
+  +{static} fromCsv(row) : Route
+  +matchesDay(dayFilterArr : string[]) : boolean
+  +matchesQuery(query : Query) : boolean
+  +priceForClass(classType : string) : number
 }
 
 class Itinerary {
-  +legs : List<Route>
-  +transfers : List<int>
-  +totalDuration() : int
-  +price(cls : Class) : number
+  <<Entity>>
+  +legs : Route[]
+  +chosenClass : string
+  +transfers : Transfer[]
+  --
+  +stops : int {readonly}
+  +totalDuration : int {readonly}
+  +price : number {readonly}
+  +path : string {readonly}
+  --
+  +isValidOnDay(dayAbbrev : string) : boolean
 }
 
 class Query {
-  +dep_city : string?
-  +arr_city : string?
-  +train_type : string?
-  +days : Set<Day>?
-  +dep_from : TimeOfDay?
-  +dep_to : TimeOfDay?
-  +max_price_first : number?
-  +max_price_second : number?
+  <<Entity>>
+  +dep_city : string
+  +arr_city : string
+  +train_type : string
+  +days : string[]
+  +dep_from : int
+  +dep_to : int
+  +max_price_first : number
+  +max_price_second : number
+  +maxStops : int
+  +minTransfer : int
+  +chosenClass : string
+  --
+  +{static} fromForm() : Query
 }
 
-' ==== Services / Utilities ====
-class ItineraryService {
-  +filterRoutes(routes : Route[], q : Query) : Route[]
-  +findItineraries(routes : Route[], depCity : string, arrCity : string, maxStops : int, minTransfer : int) : Itinerary[]
-  +totalDuration(itin : Itinerary) : int
-  +price(itin : Itinerary, cls : Class) : number
-  +sort(itins : Itinerary[], sortBy : string, cls : Class) : Itinerary[]
+class Traveller {
+  <<Entity>>
+  +name : string
+  +age : number
+  +govId : string
 }
 
-class DayUtils {
-  +normalizeToken(token : string) : Day
-  +parseDays(raw : string) : Set<Day>
-  +parseInputDays(raw : string) : Set<Day>
-}
-
-class TimeUtils {
-  +parseTime(value : string) : TimeOfDay
-  +minutesBetween(start : TimeOfDay, end : TimeOfDay) : int
-  +legDuration(dep : TimeOfDay, arr : TimeOfDay) : int
-  +formatHM(minutes : int) : string
-}
-
-class HeaderNormalizer {
-  +normalize(headers : string[]) : HeaderMap
-}
-
-class CSVLoader {
-  -parser
-  +load(file) : Route[]
-}
-
-class ResultRenderer {
-  -elements
-  -tableBody
-  -summary
-  +render(itins : Itinerary[], cls : Class)
-  +clearResults()
-  +updateSummary(info : string)
-  +updateMessage(msg : string, isError : bool)
-  +updateKPIs(metrics)
-  +resetKPIs()
-  +updateResultsCount(count : int)
-}
-
-class RailSearchApp {
-  -routes : Route[]
-  -lastResults : Itinerary[]
-  -elements
-  -loader : CSVLoader
-  -renderer : ResultRenderer
-  +init()
-  +handleFileChange(event)
-  +handleReset()
-  +buildQuery() : Query
-  +handleSearch()
-  +handleExport()
-}
-
-' ==== Booking Domain (Iteration 2) ====
 class Ticket {
-  +id : int
-  +reservationId : string
+  <<Entity>>
+  +ticket_id : number
+  +class_type : string
+  +price : number
 }
 
 class Reservation {
-  +reservationId : string
-  +passenger : Passenger
-  +itineraryKey : string
-  +fareClass : string
+  <<Entity>>
+  +traveller : Traveller
+  +route : Route
+  +ticket : Ticket
 }
 
 class Trip {
-  +tripId : string
-  +dateISO : string
-  +itinerary : Itinerary
-  +fareClass : string
-  +reservations : List<Reservation>
-  +tickets : List<Ticket>
-  +createdAt : string
-  +addReservation(res : Reservation)
-  +addTicket(ticket : Ticket)
+  <<Entity>>
+  +trip_id : number
+  +client : object
+  +reservations : Reservation[]
+  +booking_date : Date
 }
 
-class Passenger {
-  +name : string
-  +age : int
-  +id : string
+' ==== Services (Client-Side) ====
+class ItineraryService {
+  <<Service>>
+  +isLayoverAllowed(prevArrMin : int, nextDepMin : int, minTransfer : int) : boolean
+  +buildTransfers(legs : Route[]) : Transfer[]
+  +find(routes : Route[], query : Query) : Itinerary[]
 }
 
-class BookingStorage {
-  +{static} STORAGE_KEY : string
-  +{static} loadAll() : Trip[]
-  +{static} saveAll(trips : Trip[])
-  +{static} pushTrip(trip : Trip)
-  +{static} findByLastNameAndId(lastName : string, govId : string) : Trip[]
+class BookingService {
+  <<Service>>
+  -apiBase : string
+  --
+  +bookTrip(itinerary : Itinerary, travellers : Traveller[], travelDate : string, fareClass : string) : Promise<Trip>
 }
 
-class BookingSystem {
+class TripViewService {
+  <<Service>>
+  -apiBase : string
+  --
+  +fetchTrips(lastName : string, govId : string) : Promise<object>
+}
+
+class CSVLoader {
+  <<Service>>
   -renderer : ResultRenderer
-  -selectedItinerary : Itinerary
-  -selectedKey : string
-  -travellers : List<Passenger>
-  -dateISO : string
-  -fareClass : string
-  -inputs
-  -buttons
-  -viewInputs
-  +bind()
-  +setSelection(itinerary : Itinerary)
-  +clearSelection()
-  +addTravellerFromInputs()
-  +removeTraveller(idx : int)
-  +renderTravellers()
-  +validate() : string
-  +bookTrip()
-  +viewTrips()
-  +{static} keyForItinerary(itin : Itinerary) : string
-  +{static} humanSummary(itin : Itinerary) : string
-  +{static} randomTicketNumber() : int
-  +{static} randomAlphaId() : string
-  +{static} uuid4() : string
-  +{static} renderTripRow(trip : Trip) : string
-  +info(msg : string)
-  +error(msg : string)
+  --
+  +loadRoutesFromCsvData(data : any[]) : Route[]
+  +handleCsvUpload(file : File, onLoaded : function)
 }
 
-' ==== Associations / Dependencies ====
-Itinerary --> Route
-Route -->TimeOfDay 
-Route --> TimeOfDay 
-Route --> Day 
+class ResultRenderer {
+  <<Service>>
+  +setMessage(text : string)
+  +updateKpis(routes : Route[], searchResults : Itinerary[])
+  +renderResults(searchResults : Itinerary[], selectedIndex : number)
+  +renderTravellers(travellers : Traveller[])
+  +renderTripsTable(tbodyId : string, rows : any[])
+}
 
-ItineraryService --> Route
-ItineraryService --> Itinerary
-ItineraryService --> Query
-ItineraryService --> Class
+' ==== Utilities (Client-Side) ====
+class TimeUtils {
+  <<Utility>>
+  +{static} parseTimeToMin(str : string) : number
+  +{static} minToHHMM(mins : int) : string
+}
 
-CSVLoader --> HeaderNormalizer
-CSVLoader --> TimeOfDay
-CSVLoader --> Day
+class DayUtils {
+  <<Utility>>
+  +{static} getDayAbbrevFromDateStr(ymd : string) : string
+  +{static} parseDaysOfOperation(str : string) : string[]
+}
 
-DayUtils --> Day
-TimeUtils --> TimeOfDay
+class HeaderNormalizer {
+  <<Utility>>
+  +{static} pick(row : object, keys : string[]) : any
+}
 
-RailSearchApp --> CSVLoader
-RailSearchApp --> ResultRenderer
-RailSearchApp --> ItineraryService
-RailSearchApp --> BookingSystem
+' ==== Application Controller (Client-Side) ====
+class RailSearchApp {
+  <<Controller>>
+  -routes : Route[]
+  -searchResults : Itinerary[]
+  -selectedIndex : number
+  -tempTravellers : Traveller[]
+  -renderer : ResultRenderer
+  -itineraryService : ItineraryService
+  -bookingService : BookingService
+  -tripViewService : TripViewService
+  -csvLoader : CSVLoader
+  --
+  +selectedItinerary : Itinerary {readonly}
+  --
+  +init()
+  +attachEvents()
+  +loadRoutesFromAPI() : Promise<void>
+  +handleSearch()
+  +reset()
+  +clearSelection()
+  +addTraveller()
+  +updateBookMessage(text : string, className : string)
+  +bookSelectedTrip() : Promise<void>
+  +fetchAndRenderTrips() : Promise<void>
+  +exportResultsToCsv()
+}
 
-' Booking System Relationships
-Trip "1" *-- "1..*" Reservation : contains
-Trip "1" *-- "1..*" Ticket : contains
-Trip "1" --> "1" Itinerary : references
-Reservation "1" --> "1" Passenger : for
-Reservation "1" --> "1" Class : fareClass
-Ticket "1" --> "1" Reservation : documents
+' ==== Backend API (Python Flask) ====
+package "Backend API" {
+  class FlaskApp {
+    <<API>>
+    +get_db() : Connection
+    +get_routes() : JSON
+    +book_trip() : JSON
+    +get_trips_for_passenger() : JSON
+  }
+  
+  class RouteModel {
+    <<Database Table>>
+    +route_id : TEXT PK
+    +departure_city : TEXT
+    +arrival_city : TEXT
+    +departure_time : TEXT
+    +arrival_time : TEXT
+    +train_type : TEXT
+    +days_of_op : TEXT
+    +first_class : REAL
+    +second_class : REAL
+  }
+  
+  class TravellerModel {
+    <<Database Table>>
+    +traveller_id : INTEGER PK
+    +first_name : TEXT
+    +last_name : TEXT
+    +gov_id : TEXT UNIQUE
+    +age : INTEGER
+  }
+  
+  class TripModel {
+    <<Database Table>>
+    +trip_id : INTEGER PK
+    +travel_date : TEXT
+    +origin : TEXT
+    +destination : TEXT
+    +stops : INTEGER
+    +total_duration : INTEGER
+    +fare_class : TEXT
+    +path_summary : TEXT
+    +created_at : TEXT
+  }
+  
+  class TripTravellerModel {
+    <<Database Table>>
+    +trip_id : INTEGER FK
+    +traveller_id : INTEGER FK
+    +seat_class : TEXT
+    +ticket_price : REAL
+  }
+}
 
-BookingSystem --> Trip : creates
-BookingSystem --> Reservation : creates
-BookingSystem --> Ticket : generates
-BookingSystem --> BookingStorage : uses
-BookingSystem --> ResultRenderer : uses
-BookingSystem --> Itinerary : selects
+' ==== Relationships ====
 
-BookingStorage --> Trip : persists
+' Value objects
+Route "1" *-- "1" TimeOfDay : dep_time
+Route "1" *-- "1" TimeOfDay : arr_time
+
+' Itinerary composition
+Itinerary "1" *-- "1..*" Route : legs
+Itinerary "1" *-- "0..*" Transfer : transfers
+
+' Trip composition
+Trip "1" *-- "1..*" Reservation : reservations
+Reservation "1" *-- "1" Traveller : traveller
+Reservation "1" *-- "1" Ticket : ticket
+Reservation "1" o-- "1" Route : route
+
+' Application composition
+RailSearchApp "1" *-- "1" ItineraryService
+RailSearchApp "1" *-- "1" BookingService
+RailSearchApp "1" *-- "1" TripViewService
+RailSearchApp "1" *-- "1" CSVLoader
+RailSearchApp "1" *-- "1" ResultRenderer
+RailSearchApp "1" o-- "0..*" Route : routes
+RailSearchApp "1" o-- "0..*" Itinerary : searchResults
+RailSearchApp "1" o-- "0..*" Traveller : tempTravellers
+
+' Service dependencies
+ItineraryService ..> Route : uses
+ItineraryService ..> Itinerary : creates
+ItineraryService ..> Query : uses
+ItineraryService ..> Transfer : creates
+
+BookingService ..> Itinerary : uses
+BookingService ..> Traveller : uses
+BookingService ..> Trip : creates
+BookingService ..> FlaskApp : HTTP POST /api/trips
+
+TripViewService ..> Trip : fetches
+TripViewService ..> FlaskApp : HTTP GET /api/trips
+
+CSVLoader ..> Route : creates
+CSVLoader ..> HeaderNormalizer : uses
+CSVLoader "1" o-- "1" ResultRenderer
+
+ResultRenderer ..> Itinerary : renders
+ResultRenderer ..> Traveller : renders
+
+' Utility dependencies
+Route ..> TimeOfDay : uses
+Route ..> HeaderNormalizer : uses
+Route ..> DayUtils : uses
+Query ..> TimeUtils : uses
+Query ..> DayUtils : uses
+TimeUtils ..> TimeOfDay : creates
+
+' Backend to Frontend
+FlaskApp ..> RouteModel : queries
+FlaskApp ..> TravellerModel : queries/inserts
+FlaskApp ..> TripModel : inserts/queries
+FlaskApp ..> TripTravellerModel : inserts/queries
+
+RailSearchApp ..> FlaskApp : HTTP /api/routes
+Route ..> RouteModel : maps from
+Trip ..> TripModel : persisted as
+Traveller ..> TravellerModel : persisted as
+Reservation ..> TripTravellerModel : link table
 
 @enduml

@@ -1,12 +1,24 @@
 @startuml setCriteria
-title Internal Operation — setCriteria() (Basic)
+title Internal Operation — Query Building
 
 actor User as U
 participant "RailSearchApp" as App
-participant "ResultRenderer" as Renderer
+participant "Query" as Q
+participant "DayUtils" as DU
+participant "TimeUtils" as TU
 
-U -> App : setCriteria(depCity, arrCity, trainType, days,\n depFrom?, depTo?, maxPriceFirst?, maxPriceSecond?)
-App -> App : buildQuery()
-App -> Renderer : updateMessage("Criteria accepted")
+U -> App : handleSearch()
+App -> Q : fromForm()
+
+activate Q
+Q -> Q : Read form inputs (from, to, traintype, days, etc.)
+Q -> DU : parseDaysOfOperation(daysFilterRaw)
+DU --> Q : days[]
+Q -> TU : parseTimeToMin(depFrom)
+TU --> Q : dep_from (minutes)
+Q -> TU : parseTimeToMin(depTo)
+TU --> Q : dep_to (minutes)
+Q --> App : query
+deactivate Q
 
 @enduml

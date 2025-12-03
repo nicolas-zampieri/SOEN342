@@ -1,39 +1,33 @@
 @startuml ExcecuteSearch
-title Internal Operation — executeSearch()
+title Internal Operation — handleSearch()
 
 actor User as U
-participant "RailSearchApp (UI)" as UI
+participant "RailSearchApp" as App
+participant "Query" as Q
 participant "ItineraryService" as SVC
-participant "Routes (in-memory)" as ROUTES
 participant "ResultRenderer" as R
 
-U -> UI : executeSearch()
+U -> App : handleSearch()
 
-alt CSV not loaded
-  UI -> R : updateMessage("Please load a CSV first.", true)
-  UI -> R : clearResults()
+alt No routes loaded
+  App -> R : setMessage("No routes loaded")
   return
 end
 
-UI -> UI : query = buildQuery()
+App -> Q : fromForm()
+Q --> App : query
+
 alt invalid query
-  UI -> R : updateMessage(error, true)
-  deactivate UI
+  App -> R : setMessage(error)
   return
 end
 
-UI -> SVC : filterRoutes(ROUTES, query)
-SVC --> UI : filteredRoutes
+App -> SVC : find(routes, query)
+SVC --> App : searchResults[]
 
-UI -> SVC : findItineraries(filteredRoutes,\n query.dep_city, query.arr_city,\n maxStops, minTransfer)
-SVC --> UI : itineraries[]
-
-UI -> SVC : sort(itineraries, sortBy, cls)
-SVC --> UI : sortedItins[]
-
-UI -> R : render(sortedItins, cls)
-UI -> R : updateSummary("\#{n} itineraries • From ...")
-UI -> R : updateMessage("", false)
+App -> R : renderResults(searchResults, selectedIndex)
+App -> R : updateKpis(routes, searchResults)
+App -> R : setMessage("")
 
 deactivate UI
 @enduml

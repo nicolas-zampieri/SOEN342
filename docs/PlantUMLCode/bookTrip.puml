@@ -1,40 +1,40 @@
 @startuml BookTrip
-title Book a Trip Sequence Diagram
+title Book a Trip Sequence Diagram (Iteration 3)
 
 actor Client
-participant "RailSearchApp (UI)" as UI
-participant "BookingSystem" as BS
-participant "Trip"
-participant "Reservation"
-participant "Ticket"
-participant "BookingStorage" as DB
+participant "RailSearchApp" as App
+participant "BookingService" as BookSvc
+participant "Backend API" as API
+participant "ResultRenderer" as R
 
-Client -> UI: Select connection + Enter traveller info
-UI -> BS: bookTrip(connection, travellers)
+Client -> App: bookSelectedTrip()
 
-activate BS
-BS -> BS: validateInput(connection, travellers)
+activate App
+App -> App: Validate (itinerary, travelDate, travellers)
 
 alt valid input
-  BS -> Trip: createTrip(connection)
-  Trip --> BS: trip instance
-
-  loop for each traveller
-    BS -> Reservation: createReservation(traveller, connection)
-    Reservation --> BS: reservation
-    BS -> Ticket: createTicket(reservation)
-    Ticket --> BS: ticket
-    BS -> Trip: add(reservation, ticket)
-  end
-
-  BS -> DB: saveTrip(trip)
-  DB --> BS: confirmation
-
-  BS --> UI: success(tripId, tickets)
+  App -> BookSvc: bookTrip(itinerary, travellers, travelDate, fareClass)
+  
+  activate BookSvc
+  BookSvc -> BookSvc: Validate day of week
+  BookSvc -> BookSvc: Calculate price
+  
+  BookSvc -> API: POST /api/trips\n{travel_date, origin, destination, stops,\ntotal_duration, fare_class, path_summary,\nprice_per_passenger, travellers[]}
+  
+  API --> BookSvc: {trip_id}
+  
+  BookSvc -> BookSvc: Create Trip, Reservations, Tickets
+  BookSvc --> App: trip
+  deactivate BookSvc
+  
+  App -> R: updateBookMessage("Trip booked successfully. Trip ID: {tripId}", "hint ok")
+  App -> App: Clear travellers and selection
+  App -> R: renderTravellers([])
+  App -> R: renderResults(searchResults, null)
 else invalid
-  BS --> UI: error("invalid input")
+  App -> R: updateBookMessage(error, "hint error")
 end
 
-UI --> Client: show confirmation or error
-deactivate BS
+App --> Client: Show confirmation or error
+deactivate App
 @enduml

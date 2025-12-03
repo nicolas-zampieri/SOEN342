@@ -1,182 +1,133 @@
 @startuml DomainModel
+title EU Rail Search — Domain Model (Iteration 3)
 left to right direction
 
+' ==== Enumerations ====
 enum Day {
-  Mon
-  Tue
-  Wed
-  Thu
-  Fri
-  Sat
-  Sun
-  Daily
 }
 
-class Class {
-  <<enumeration>>
-  first
-  second
+enum ClassType {
 }
 
-entity "RouteDB" as RouteDB {
-  *route_id : <<PK>>
-  *departure_city
-  *arrival_city
-  *departure_time
-  *arrival_time
-  *train_type
-  *days_of_op
-  *price_first_class
-  *price_second_class
+' ==== Value Objects ====
+class TimeOfDay <<ValueObject>> {
 }
 
-entity "TravellerDB" as ClientDB {
-  *traveller_id : <<PK>>
-  *first_name
-  *last_name
-  *gov_id
-  *age
+class Transfer <<ValueObject>> {
 }
 
-entity "TripDB" as TripDB {
-  *trip_id : <<PK>>
-  *travel_date
-  *origin
-  *destination
-  *stops
-  *total_duration
-  *fare_class
-  *path_summary
-  *created_at
+' ==== Database Schema ====
+entity "Route" as RouteDB <<table>> {
 }
 
-entity "TripTravellerDB" as TravelDB {
-  *(trip_id, traveller_id) : <<PK>>
-  *trip_id : <<FK>>
-  *traveller_id : <<FK>>
-  *trip_id
-  *traveller_id
-  *seat_class
-  *ticket_price
+entity "Traveller" as TravellerDB <<table>> {
 }
 
-class TimeOfDay {
-  +h : int
-  +m : int
+entity "Trip" as TripDB <<table>> {
 }
 
-class Route {
-  +route_id : string
-  +dep_city : string
-  +arr_city : string
-  +dep_time : TimeOfDay
-  +arr_time : TimeOfDay
-  +train_type : string
-  +days : Set<Day>
-  +price_first : number
-  +price_second : number
+entity "TripTraveller" as TripTravellerDB <<table>> {
 }
 
-class Itinerary {
-  +legs : List<Route>
-  +transfers : List<int>
+' ==== Domain Entities (Client-Side) ====
+class Route <<Entity>> {
 }
 
-class Query {
-  +dep_city : string?
-  +arr_city : string?
-  +train_type : string?
-  +days : Set<Day>?
-  +dep_from : TimeOfDay?
-  +dep_to : TimeOfDay?
-  +max_price_first : number?
-  +max_price_second : number?
+class Itinerary <<Entity>> {
 }
 
-class Client {
-  +client_id : string
-  +last_name : string
-  +first_name : string
+class Query <<Entity>> {
 }
 
-class Traveller {
-  +name : string
-  +age : int
-  +id : string
+class Traveller <<Entity>> {
 }
 
-class Trip {
-  +trip_id : string
-  +client : Client
-  +reservations : List<Reservation>
-  +booking_date : Date
+class Ticket <<Entity>> {
 }
 
-class Reservation {
-  +ticket : Ticket
-  +traveller : Traveller
-  +route : Route
+class Reservation <<Entity>> {
 }
 
-class Ticket {
-  +ticket_id : int
-  +class_type : Class
-  +price : number
+class Trip <<Entity>> {
 }
 
-class BookingService {
-  +bookTrip(travellers, route) : Trip
+' ==== Services (Client-Side) ====
+class ItineraryService <<Service>> {
 }
 
-class TripViewService {
-  +getCurrentTrips(lastName, clientId) : List<Trip>
-  +getTripHistory(lastName, clientId) : List<Trip>
+class BookingService <<Service>> {
 }
 
-class ItineraryService
-class DayUtils
-class TimeUtils
-class CSVLoader
-class HeaderNormalizer
-class ResultRenderer
-class RailSearchApp
+class TripViewService <<Service>> {
+}
 
-Itinerary "1" o-- "1..*" Route : legs
+class CSVLoader <<Service>> {
+}
+
+class ResultRenderer <<Service>> {
+}
+
+' ==== Utilities ====
+class TimeUtils <<Utility>> {
+}
+
+class DayUtils <<Utility>> {
+}
+
+class HeaderNormalizer <<Utility>> {
+}
+
+' ==== Application Controller ====
+class RailSearchApp <<Controller>> {
+}
+
+' ==== Relationships ====
 Route "1" *-- "1" TimeOfDay : dep_time
 Route "1" *-- "1" TimeOfDay : arr_time
-Route "1" o-- "0..*" Day : days
 
+Itinerary "1" *-- "1..*" Route : legs
+Itinerary "1" *-- "0..*" Transfer : transfers
 
 Trip "1" *-- "1..*" Reservation : reservations
-Trip "1" o-- "1" Client : client
+Reservation "1" *-- "1" Traveller : traveller
 Reservation "1" *-- "1" Ticket : ticket
-Reservation "1" o-- "1" Traveller : traveller
 Reservation "1" o-- "1" Route : route
-Ticket "1" o-- "1" Class : class_type
 
-CSVLoader --> HeaderNormalizer
-RailSearchApp --> CSVLoader
-RailSearchApp --> ResultRenderer
-RailSearchApp --> ItineraryService
-RailSearchApp --> BookingService
-RailSearchApp --> TripViewService
-ItineraryService --> Route
-ItineraryService --> Itinerary
-ItineraryService --> Query
-ItineraryService --> Class
-BookingService --> Trip
-BookingService --> Reservation
-BookingService --> Ticket
-BookingService --> Client
-BookingService --> Traveller
-TripViewService --> Trip
-TripViewService --> Client
-DayUtils --> Day
-TimeUtils --> TimeOfDay
+Query ..> TimeOfDay : uses
 
-RouteDB <-- Route : maps_to
-ClientDB <-- Traveller : maps_to
-TripDB <-- Trip : maps_to
-TravelDB <-- Reservation : maps_to
+RailSearchApp "1" *-- "1" ItineraryService
+RailSearchApp "1" *-- "1" BookingService
+RailSearchApp "1" *-- "1" TripViewService
+RailSearchApp "1" *-- "1" CSVLoader
+RailSearchApp "1" *-- "1" ResultRenderer
+RailSearchApp "1" o-- "0..*" Route : routes
+RailSearchApp "1" o-- "0..*" Itinerary : searchResults
+RailSearchApp "1" o-- "0..*" Traveller : tempTravellers
+
+ItineraryService ..> Route : uses
+ItineraryService ..> Itinerary : creates
+ItineraryService ..> Query : uses
+
+BookingService ..> Itinerary : uses
+BookingService ..> Traveller : uses
+BookingService ..> Trip : creates
+
+TripViewService ..> Trip : fetches
+
+CSVLoader ..> Route : creates
+CSVLoader ..> HeaderNormalizer : uses
+
+ResultRenderer ..> Itinerary : renders
+ResultRenderer ..> Traveller : renders
+
+' Database mappings
+RouteDB <.. Route : maps_from
+TravellerDB <.. Traveller : persisted_as
+TripDB <.. Trip : persisted_as
+TripTravellerDB <.. Reservation : link_table
+
+' Utilities
+TimeUtils ..> TimeOfDay : creates
+DayUtils ..> Day : uses
 
 @enduml
