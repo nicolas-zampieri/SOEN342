@@ -1,877 +1,1013 @@
-const DAY_ALIASES = {
-  mon: 'Mon',
-  monday: 'Mon',
-  tue: 'Tue',
-  tuesday: 'Tue',
-  wed: 'Wed',
-  wednesday: 'Wed',
-  thu: 'Thu',
-  thursday: 'Thu',
-  fri: 'Fri',
-  friday: 'Fri',
-  sat: 'Sat',
-  saturday: 'Sat',
-  sun: 'Sun',
-  sunday: 'Sun',
-  daily: 'Daily',
-};
+// main-2.js — Iteration 3 (backend-connected)
+//
+// Assumes:
+// - Flask server running at http://127.0.0.1:5000
+// - Endpoints:
+//    GET  /api/routes              -> list of routes from DB (optional but preferred)
+//    POST /api/trips               -> book a trip, returns { trip_id }
+//    GET  /api/trips?last_name=&gov_id= -> upcoming/history trips for passenger
+//
+// Also supports CSV upload as a fallback to populate `routes` on the client.
 
-class DayUtils {
-  static normalizeToken(token) {
-    const key = token.toLowerCase().replace(/[^a-z]/g, '');
-    if (!key) return null;
-    if (DAY_ALIASES[key]) return DAY_ALIASES[key];
-    const abbr = token.slice(0, 3).toLowerCase();
-    if (!abbr) return null;
-    return abbr.charAt(0).toUpperCase() + abbr.slice(1);
+(() => {
+  const API_BASE = "http://127.0.0.1:5000/api";
+
+  const $ = (id) => document.getElementById(id);
+
+  // ---------------- Time & day helpers ----------------
+
+  function parseTimeToMin(str) {
+    if (!str) return null;
+    const parts = str.trim().split(":");
+    if (parts.length !== 2) return null;
+    const h = Number(parts[0]);
+    const m = Number(parts[1]);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
   }
 
-  static parseDays(raw) {
-    if (!raw) return new Set();
-    const parts = raw.replaceAll('/', ',').split(',').map((p) => p.trim()).filter(Boolean);
-    return new Set(parts.map((p) => DayUtils.normalizeToken(p)).filter(Boolean));
+  function minToHHMM(mins) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   }
 
-  static parseInputDays(raw) {
-    if (!raw) return new Set();
-    const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
-    return new Set(parts.map((p) => DayUtils.normalizeToken(p)).filter(Boolean));
-  }
-}
-
-class TimeUtils {
-  static parseTime(value) {
-    const s = (value || '').toString().trim();
-    if (!s) throw new Error('Time value is empty');
-    const patterns = [/^(\d{1,2}):(\d{2})$/, /^(\d{1,2})\.(\d{2})$/, /^(\d{1,2})(\d{2})$/];
-    for (const re of patterns) {
-      const match = s.match(re);
-      if (match) {
-        const hours = parseInt(match[1], 10);
-        const minutes = parseInt(match[2], 10);
-        if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
-          return { h: hours, m: minutes };
-        }
-      }
-    }
-    throw new Error(`Unrecognized time format: ${s}`);
+  function getDayAbbrevFromDateStr(ymd) {
+    // ymd: "YYYY-MM-DD"
+    const [y, mo, d] = ymd.split("-").map(Number);
+    const dt = new Date(y, mo - 1, d);
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    return days[dt.getDay()];
   }
 
-  static minutesBetween(start, end) {
-    const a = start.h * 60 + start.m;
-    let b = end.h * 60 + end.m;
-    if (b < a) b += 1440;
-    return b - a;
+  function parseDaysOfOperation(str) {
+    if (!str) return [];
+    return str
+      .split(/[,/ ]+/)
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean)
+      .map((d) => d[0].toUpperCase() + d.slice(1).toLowerCase()); // Mon, Tue, etc.
   }
 
-  static legDuration(dep, arr) {
-    return TimeUtils.minutesBetween(dep, arr);
-  }
+  // ---------------- Layover Policy (Iteration 3) ----------------
+  // Rules:
+  // - Layover >= minTransfer (user input)
+  // - Daytime (06:00–22:00): max 120 min
+  // - After-hours (22:00–06:00): max 30 min
 
-  static formatHM(minutes) {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-  }
-}
+  function isLayoverAllowed(prevArrMin, nextDepMin, minTransfer) {
+    const layover = nextDepMin - prevArrMin;
+    if (layover < minTransfer) return false;
 
-class HeaderNormalizer {
-  static normalize(headers) {
-    const lower = Object.fromEntries(headers.map((h) => [h.toLowerCase().trim(), h]));
-    const get = (...names) => {
-      for (const name of names) {
-        const key = name.toLowerCase();
-        if (lower[key]) return lower[key];
-      }
-      return undefined;
-    };
-    return {
-      route_id: get('route id', 'route_id', 'id'),
-      dep_city: get('departure city', 'from', 'departure'),
-      arr_city: get('arrival city', 'to', 'arrival'),
-      dep_time: get('departure time', 'dep_time', 'depart'),
-      arr_time: get('arrival time', 'arr_time', 'arrive'),
-      train_type: get('train type', 'train', 'type'),
-      days: get('days of operation', 'days', 'operation days'),
-      price_first: get('first class ticket rate (in euro)', 'price_first', 'first class'),
-      price_second: get('second class ticket rate (in euro)', 'price_second', 'second class'),
-    };
-  }
-}
+    const DAY_START = 6 * 60; // 06:00
+    const NIGHT_START = 22 * 60; // 22:00
 
-class CSVLoader {
-  constructor(parser = Papa) {
-    this.parser = parser;
-  }
-
-  load(file) {
-    return new Promise((resolve, reject) => {
-      this.parser.parse(file, {
-        header: true,
-        dynamicTyping: false,
-        skipEmptyLines: true,
-        complete: (result) => {
-          try {
-            const headers = result.meta.fields || [];
-            const map = HeaderNormalizer.normalize(headers);
-            const rows = result.data
-              .map((row, index) => {
-                try {
-                  const depTime = TimeUtils.parseTime(row[map.dep_time]);
-                  const arrTime = TimeUtils.parseTime(row[map.arr_time]);
-                  return {
-                    route_id: String(row[map.route_id] ?? `row-${index}`),
-                    dep_city: String(row[map.dep_city] || '').trim(),
-                    arr_city: String(row[map.arr_city] || '').trim(),
-                    dep_time: depTime,
-                    arr_time: arrTime,
-                    train_type: String(row[map.train_type] || '').trim(),
-                    days: DayUtils.parseDays(String(row[map.days] || '')),
-                    price_first: parseFloat(String(row[map.price_first] || '0').replace(',', '.')) || 0,
-                    price_second: parseFloat(String(row[map.price_second] || '0').replace(',', '.')) || 0,
-                    duration: TimeUtils.legDuration(depTime, arrTime),
-                  };
-                } catch (error) {
-                  console.warn('Skipping row', index, error);
-                  return null;
-                }
-              })
-              .filter(Boolean);
-            resolve(rows);
-          } catch (error) {
-            reject(error);
-          }
-        },
-        error: (error) => reject(error),
-      });
-    });
-  }
-}
-
-class ItineraryService {
-  static filterRoutes(routes, query) {
-    const type = query.train_type ? query.train_type.toLowerCase() : null;
-    const daySet = query.days && query.days.size ? query.days : null;
-    const depFrom = query.dep_from;
-    const depTo = query.dep_to;
-    const maxFirst = query.max_price_first;
-    const maxSecond = query.max_price_second;
-
-    return routes.filter((route) => {
-      if (type && !route.train_type.toLowerCase().includes(type)) return false;
-      if (daySet) {
-        const overlap = [...daySet].some((day) => route.days.has(day));
-        if (!overlap) return false;
-      }
-      if (depFrom) {
-        const diff = TimeUtils.minutesBetween(depFrom, route.dep_time);
-        const maxDiff = depTo ? TimeUtils.minutesBetween(depFrom, depTo) : null;
-        if (maxDiff !== null && !(0 <= diff && diff <= maxDiff)) return false;
-      }
-      if (maxFirst != null && route.price_first > maxFirst) return false;
-      if (maxSecond != null && route.price_second > maxSecond) return false;
-      return true;
-    });
-  }
-
-  static groupByDeparture(routes) {
-    const map = new Map();
-    for (const route of routes) {
-      const key = route.dep_city.toLowerCase();
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(route);
-    }
-    return map;
-  }
-
-  static findItineraries(routes, depCity, arrCity, maxStops = 2, minTransfer = 10) {
-    const byDeparture = ItineraryService.groupByDeparture(routes);
-    const results = [];
-    const originKey = (depCity || '').toLowerCase();
-    const targetKey = (arrCity || '').toLowerCase();
-    const absoluteMinutes = (time) => time.h * 60 + time.m;
-
-    const appendItinerary = (legs) => {
-      const transfers = [];
-      for (let i = 0; i < legs.length - 1; i += 1) {
-        transfers.push(absoluteMinutes(legs[i + 1].dep_time) - absoluteMinutes(legs[i].arr_time));
-      }
-      results.push({ legs, transfers });
-    };
-
-    for (const leg of byDeparture.get(originKey) || []) {
-      if (leg.arr_city.toLowerCase() === targetKey) appendItinerary([leg]);
-    }
-
-    if (maxStops >= 1) {
-      for (const leg1 of byDeparture.get(originKey) || []) {
-        const midKey = leg1.arr_city.toLowerCase();
-        if (midKey === originKey) continue;
-        for (const leg2 of byDeparture.get(midKey) || []) {
-          if (leg2.arr_city.toLowerCase() !== targetKey) continue;
-          if (absoluteMinutes(leg2.dep_time) < absoluteMinutes(leg1.arr_time)) continue;
-          const transfer = absoluteMinutes(leg2.dep_time) - absoluteMinutes(leg1.arr_time);
-          if (transfer < minTransfer) continue;
-          appendItinerary([leg1, leg2]);
-        }
-      }
-    }
-
-    if (maxStops >= 2) {
-      for (const leg1 of byDeparture.get(originKey) || []) {
-        const midKey1 = leg1.arr_city.toLowerCase();
-        if (midKey1 === originKey) continue;
-        for (const leg2 of byDeparture.get(midKey1) || []) {
-          if (absoluteMinutes(leg2.dep_time) < absoluteMinutes(leg1.arr_time)) continue;
-          const transfer1 = absoluteMinutes(leg2.dep_time) - absoluteMinutes(leg1.arr_time);
-          if (transfer1 < minTransfer) continue;
-          const midKey2 = leg2.arr_city.toLowerCase();
-          if (midKey2 === originKey || midKey2 === midKey1) continue;
-          for (const leg3 of byDeparture.get(midKey2) || []) {
-            if (leg3.arr_city.toLowerCase() !== targetKey) continue;
-            if (absoluteMinutes(leg3.dep_time) < absoluteMinutes(leg2.arr_time)) continue;
-            const transfer2 = absoluteMinutes(leg3.dep_time) - absoluteMinutes(leg2.arr_time);
-            if (transfer2 < minTransfer) continue;
-            appendItinerary([leg1, leg2, leg3]);
-          }
-        }
-      }
-    }
-
-    const seen = new Set();
-    const deduped = [];
-    for (const itinerary of results) {
-      const key = itinerary.legs.map((leg) => leg.route_id).join('>');
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduped.push(itinerary);
-      }
-    }
-    return deduped;
-  }
-
-  static totalDuration(itinerary) {
-    const legs = itinerary.legs.reduce((sum, leg) => sum + leg.duration, 0);
-    const transfers = itinerary.transfers.reduce((sum, minutes) => sum + minutes, 0);
-    return legs + transfers;
-  }
-
-  static price(itinerary, cls) {
-    return itinerary.legs.reduce((sum, leg) => {
-      return sum + (cls === 'first' ? leg.price_first : leg.price_second);
-    }, 0);
-  }
-
-  static sort(itineraries, sortBy, cls) {
-    const copy = [...itineraries];
-    if (sortBy === 'price') {
-      copy.sort(
-        (a, b) =>
-          ItineraryService.price(a, cls) - ItineraryService.price(b, cls)
-          || ItineraryService.totalDuration(a) - ItineraryService.totalDuration(b),
-      );
+    const isDaytime = prevArrMin >= DAY_START && prevArrMin < NIGHT_START;
+    if (isDaytime) {
+      return layover <= 120;
     } else {
-      copy.sort(
-        (a, b) =>
-          ItineraryService.totalDuration(a) - ItineraryService.totalDuration(b)
-          || ItineraryService.price(a, cls) - ItineraryService.price(b, cls),
-      );
-    }
-    return copy;
-  }
-}
-
-class ResultRenderer {
-  constructor(elements) {
-    this.elements = elements;
-    this.tableBody = document.querySelector('#results tbody');
-    this.summary = document.getElementById('summary');
-  }
-
-  render(itineraries, cls) {
-    if (!this.tableBody) return;
-    this.tableBody.innerHTML = '';
-    if (!itineraries.length) {
-      const row = document.createElement('tr');
-      row.classList.add('result-row');
-      row.innerHTML = `<td colspan="8" class="muted" style="text-align:center;padding:12px 8px;">No itineraries match the current filters.</td>`;
-      
-      // Append action cell with Select button
-      const actionTd = document.createElement('td');
-      const btn = document.createElement('button');
-      btn.className = 'secondary';
-      btn.textContent = 'Select';
-      btn.addEventListener('click', () => {
-        document.dispatchEvent(new CustomEvent('itinerary:selected', { detail: { itinerary } }));
-        this.updateMessage('Itinerary selected for booking.');
-      });
-      actionTd.appendChild(btn);
-      row.appendChild(actionTd);
-
-      this.tableBody.appendChild(row);
-      this.updateResultsCount(0);
-      return;
-    }
-    for (const itinerary of itineraries) {
-      const stops = Math.max(0, itinerary.legs.length - 1);
-      const pathSegments = [
-        ...itinerary.legs.map(
-          (leg) => `${leg.dep_city}(${String(leg.dep_time.h).padStart(2, '0')}:${String(leg.dep_time.m).padStart(2, '0')})`,
-        ),
-        `${itinerary.legs.at(-1).arr_city}(${String(itinerary.legs.at(-1).arr_time.h).padStart(2, '0')}:${String(
-          itinerary.legs.at(-1).arr_time.m,
-        ).padStart(2, '0')})`,
-      ];
-      const legsText = itinerary.legs
-        .map(
-          (leg, index) =>
-            `[${index + 1}] ${leg.dep_city}→${leg.arr_city} ${String(leg.dep_time.h).padStart(2, '0')}:${String(
-              leg.dep_time.m,
-            ).padStart(2, '0')}–${String(leg.arr_time.h).padStart(2, '0')}:${String(leg.arr_time.m).padStart(
-              2,
-              '0',
-            )} (${TimeUtils.formatHM(leg.duration)})`,
-        )
-        .join(' | ');
-      const transfers = itinerary.transfers.length
-        ? itinerary.transfers.map((minutes) => TimeUtils.formatHM(minutes)).join(', ')
-        : '—';
-      const trainTypes = itinerary.legs.map((leg) => leg.train_type || '—').join(' | ') || '—';
-      const daysText = itinerary.legs
-        .map((leg) => {
-          const arr = Array.from(leg.days || []);
-          return arr.length ? arr.join('/') : '—';
-        })
-        .join(' | ');
-
-      const row = document.createElement('tr');
-      row.classList.add('result-row');
-      row.innerHTML = `
-        <td class="nowrap"><span class="badge">${stops}</span></td>
-        <td class="nowrap">${TimeUtils.formatHM(ItineraryService.totalDuration(itinerary))}</td>
-        <td class="nowrap">€${ItineraryService.price(itinerary, cls).toFixed(2)}</td>
-        <td class="nowrap">${trainTypes}</td>
-        <td class="nowrap">${daysText}</td>
-        <td class="nowrap">${transfers}</td>
-        <td class="path">${pathSegments.join(' → ')}</td>
-        <td>${legsText}</td>
-      `;
-      
-      // Append action cell with Select button
-      const actionTd = document.createElement('td');
-      const btn = document.createElement('button');
-      btn.className = 'secondary';
-      btn.textContent = 'Select';
-      btn.addEventListener('click', () => {
-        document.dispatchEvent(new CustomEvent('itinerary:selected', { detail: { itinerary } }));
-        this.updateMessage('Itinerary selected for booking.');
-      });
-      actionTd.appendChild(btn);
-      row.appendChild(actionTd);
-
-      this.tableBody.appendChild(row);
-    }
-    this.updateResultsCount(itineraries.length);
-  }
-
-  clearResults() {
-    if (!this.tableBody) return;
-    this.tableBody.innerHTML = '';
-    this.updateResultsCount(0);
-  }
-
-  updateSummary(info) {
-    if (!this.summary) return;
-    this.summary.textContent = info || '';
-  }
-
-  updateMessage(message, isError = false) {
-    if (!this.elements.msg) return;
-    if (!message) {
-      this.elements.msg.textContent = '';
-      return;
-    }
-    const kind = isError ? 'error' : 'ok';
-    this.elements.msg.innerHTML = `<span class="${kind}">${message}</span>`;
-  }
-
-  updateKPIs({ routes = 0, cities = 0, direct = 0 }) {
-    if (this.elements.kpiRoutes) this.elements.kpiRoutes.textContent = routes;
-    if (this.elements.kpiCities) this.elements.kpiCities.textContent = cities;
-    if (this.elements.kpiDirect) this.elements.kpiDirect.textContent = direct;
-  }
-
-  resetKPIs() {
-    this.updateKPIs({ routes: 0, cities: 0, direct: 0 });
-  }
-
-  updateResultsCount(count) {
-    if (this.elements.kpiResults) this.elements.kpiResults.textContent = String(count);
-  }
-}
-
-class RailSearchApp {
-  constructor() {
-    this.routes = [];
-    this.lastResults = [];
-    this.elements = {
-      file: document.getElementById('csv'),
-      from: document.getElementById('from'),
-      to: document.getElementById('to'),
-      type: document.getElementById('traintype'),
-      days: document.getElementById('days'),
-      depFrom: document.getElementById('depfrom'),
-      depTo: document.getElementById('depto'),
-      cls: document.getElementById('class'),
-      maxStops: document.getElementById('maxstops'),
-      minXfer: document.getElementById('minxfer'),
-      price1: document.getElementById('price1'),
-      price2: document.getElementById('price2'),
-      sort: document.getElementById('sort'),
-      msg: document.getElementById('msg'),
-      kpiRoutes: document.getElementById('kpi-routes'),
-      kpiCities: document.getElementById('kpi-cities'),
-      kpiDirect: document.getElementById('kpi-direct'),
-      kpiResults: document.getElementById('kpi-results'),
-      resetBtn: document.getElementById('btn-reset'),
-      searchBtn: document.getElementById('btn-search'),
-      exportBtn: document.getElementById('btn-export'),
-    };
-    this.loader = new CSVLoader();
-    this.renderer = new ResultRenderer(this.elements);
-  }
-
-  init() {
-    if (!this.elements.file) return;
-    this.bindEvents();
-    this.renderer.clearResults();
-    this.renderer.resetKPIs();
-  }
-
-  bindEvents() {
-    this.elements.file.addEventListener('change', (event) => this.handleFileChange(event));
-    this.elements.resetBtn?.addEventListener('click', () => this.handleReset());
-    this.elements.searchBtn?.addEventListener('click', () => this.handleSearch());
-    this.elements.exportBtn?.addEventListener('click', () => this.handleExport());
-  }
-
-  async handleFileChange(event) {
-    const file = event.target.files?.[0];
-    this.renderer.updateMessage('');
-    if (!file) {
-      this.routes = [];
-      this.lastResults = [];
-      this.renderer.clearResults();
-      this.renderer.resetKPIs();
-      this.renderer.updateSummary('');
-      return;
-    }
-    try {
-      this.routes = await this.loader.load(file);
-      const citySet = new Set(this.routes.flatMap((route) => [route.dep_city, route.arr_city]));
-      const directPairs = new Set(
-        this.routes.map((route) => `${route.dep_city.toLowerCase()}→${route.arr_city.toLowerCase()}`),
-      );
-      this.renderer.updateKPIs({
-        routes: this.routes.length,
-        cities: citySet.size,
-        direct: directPairs.size,
-      });
-      this.renderer.updateSummary(`Loaded ${this.routes.length} routes across ${citySet.size} cities`);
-    } catch (error) {
-      this.renderer.updateMessage(`Failed to parse CSV: ${String(error)}`, true);
+      return layover <= 30;
     }
   }
 
-  handleReset() {
-    ['from', 'to', 'traintype', 'days', 'depfrom', 'depto', 'price1', 'price2'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
+  // ---------------- State ----------------
+
+  let routes = []; // [{ routeId, from, to, dep, arr, depMin, arrMin, duration, trainType, days, daysStr, firstRate, secondRate }]
+  let searchResults = [];
+  let selectedIndex = null;
+  let tempTravellers = [];
+
+  // ---------------- KPI / UI helpers ----------------
+
+  function updateKpis() {
+    const routesCount = routes.length;
+    const cities = new Set();
+    const directPairs = new Set();
+    routes.forEach((r) => {
+      cities.add(r.from);
+      cities.add(r.to);
+      directPairs.add(`${r.from}→${r.to}`);
     });
-    if (this.elements.cls) this.elements.cls.value = 'second';
-    if (this.elements.maxStops) this.elements.maxStops.value = '2';
-    if (this.elements.minXfer) this.elements.minXfer.value = '10';
-    if (this.elements.sort) this.elements.sort.value = 'duration';
-    this.lastResults = [];
-    this.renderer.clearResults();
-    this.renderer.updateSummary('');
-    this.renderer.updateMessage('');
+
+    if ($("kpi-routes")) $("kpi-routes").textContent = routesCount;
+    if ($("kpi-cities")) $("kpi-cities").textContent = cities.size;
+    if ($("kpi-direct")) $("kpi-direct").textContent = directPairs.size;
+    if ($("kpi-results")) $("kpi-results").textContent = searchResults.length;
   }
 
-  buildQuery() {
-    const depCity = this.elements.from?.value.trim() || null;
-    const arrCity = this.elements.to?.value.trim() || null;
-    if (!depCity || !arrCity) {
-      this.renderer.updateMessage('Please enter both departure and arrival cities.', true);
-      this.renderer.clearResults();
-      this.renderer.updateSummary('');
-      this.lastResults = [];
-      return null;
-    }
-    if (depCity && arrCity && depCity.toLowerCase() === arrCity.toLowerCase()) {
-      this.renderer.updateMessage('Departure and arrival cities must be different.', true);
-      this.renderer.clearResults();
-      this.renderer.updateSummary('');
-      this.lastResults = [];
-      return null;
-    }
-
-    try {
-      const depFrom = this.elements.depFrom?.value ? TimeUtils.parseTime(this.elements.depFrom.value) : null;
-      const depTo = this.elements.depTo?.value ? TimeUtils.parseTime(this.elements.depTo.value) : null;
-      const days = DayUtils.parseInputDays(this.elements.days?.value || '');
-      return {
-        dep_city: depCity,
-        arr_city: arrCity,
-        train_type: this.elements.type?.value.trim() || null,
-        days,
-        dep_from: depFrom,
-        dep_to: depTo,
-        max_price_first: this.elements.price1?.value ? parseFloat(this.elements.price1.value) : null,
-        max_price_second: this.elements.price2?.value ? parseFloat(this.elements.price2.value) : null,
-      };
-    } catch (error) {
-      this.renderer.updateMessage(String(error), true);
-      return null;
-    }
+  function setMessage(text) {
+    if ($("msg")) $("msg").textContent = text || "";
   }
 
-  handleSearch() {
-    if (!this.routes.length) {
-      this.renderer.updateMessage('Please load a CSV first.', true);
-      return;
-    }
-    const query = this.buildQuery();
-    if (!query) return;
+  // ---------------- Routes: from CSV (fallback) ----------------
 
-    const filtered = ItineraryService.filterRoutes(this.routes, query);
-    const itineraries = ItineraryService.findItineraries(
-      filtered,
-      query.dep_city || '',
-      query.arr_city || '',
-      parseInt(this.elements.maxStops?.value || '2', 10),
-      parseInt(this.elements.minXfer?.value || '10', 10),
+  function loadRoutesFromCsvData(data) {
+    routes = [];
+    data.forEach((row) => {
+      const id =
+        row["Route ID"] || row["route_id"] || row["id"] || row[0] || "";
+      const from =
+        (row["Departure City"] || row["From"] || "").toString().trim();
+      const to =
+        (row["Arrival City"] || row["To"] || "").toString().trim();
+      const dep =
+        (row["Departure Time"] || row["Dep"] || "").toString().trim();
+      const arr =
+        (row["Arrival Time"] || row["Arr"] || "").toString().trim();
+      if (!id || !from || !to || !dep || !arr) return;
+
+      const trainType =
+        (row["Train Type"] || row["Type"] || "").toString().trim();
+      const daysStr =
+        (row["Days of Operation"] || row["Days"] || "").toString().trim();
+      const firstRate = parseFloat(
+        row["First Class ticket rate (in euro)"] ||
+          row["First Class"] ||
+          row["1st"] ||
+          ""
+      );
+      const secondRate = parseFloat(
+        row["Second Class ticket rate (in euro)"] ||
+          row["Second Class"] ||
+          row["2nd"] ||
+          ""
+      );
+
+      const depMin = parseTimeToMin(dep);
+      const arrMin = parseTimeToMin(arr);
+      if (depMin == null || arrMin == null) return;
+
+      routes.push({
+        routeId: id.toString(),
+        from,
+        to,
+        dep,
+        arr,
+        depMin,
+        arrMin,
+        duration: arrMin - depMin,
+        trainType,
+        daysStr,
+        days: parseDaysOfOperation(daysStr),
+        firstRate: isNaN(firstRate) ? null : firstRate,
+        secondRate: isNaN(secondRate) ? null : secondRate
+      });
+    });
+
+    updateKpis();
+    setMessage(
+      routes.length > 0
+        ? `Loaded ${routes.length} routes from CSV.`
+        : "No valid routes found in CSV."
     );
-    const cls = this.elements.cls?.value || 'second';
-    const sorted = ItineraryService.sort(itineraries, this.elements.sort?.value || 'duration', cls);
-    this.lastResults = sorted;
-    this.renderer.render(sorted, cls);
-    const summary = `${sorted.length} itineraries • From: ${query.dep_city || 'any'} • To: ${
-      query.arr_city || 'any'
-    } • Sorted by ${this.elements.sort?.value || 'duration'}`;
-    this.renderer.updateSummary(summary);
-    this.renderer.updateMessage('');
   }
 
-  handleExport() {
-    if (!this.lastResults.length) {
-      this.renderer.updateMessage('No results to export.', true);
+  function handleCsvUpload(file) {
+    if (!file) {
+      setMessage("Please choose a CSV file.");
       return;
     }
-    const cls = this.elements.cls?.value || 'second';
-    const rows = this.lastResults.map((itinerary) => ({
-      stops: Math.max(0, itinerary.legs.length - 1),
-      total_duration: TimeUtils.formatHM(ItineraryService.totalDuration(itinerary)),
-      price: ItineraryService.price(itinerary, cls).toFixed(2),
-      train_types: itinerary.legs.map((leg) => leg.train_type || '').filter(Boolean).join(' | '),
-      days: itinerary.legs
-        .map((leg) => {
-          const arr = Array.from(leg.days || []);
-          return arr.length ? arr.join('/') : '';
-        })
-        .join(' | '),
-      transfers: itinerary.transfers.length
-        ? itinerary.transfers.map((minutes) => TimeUtils.formatHM(minutes)).join(' / ')
-        : '',
-      path: [
-        ...itinerary.legs.map(
-          (leg) => `${leg.dep_city}(${String(leg.dep_time.h).padStart(2, '0')}:${String(leg.dep_time.m).padStart(2, '0')})`,
-        ),
-        `${itinerary.legs.at(-1).arr_city}(${String(itinerary.legs.at(-1).arr_time.h).padStart(2, '0')}:${String(
-          itinerary.legs.at(-1).arr_time.m,
-        ).padStart(2, '0')})`,
-      ].join(' -> '),
-      legs: itinerary.legs
-        .map(
-          (leg, index) =>
-            `[${index + 1}] ${leg.dep_city}->${leg.arr_city} ${String(leg.dep_time.h).padStart(2, '0')}:${String(
-              leg.dep_time.m,
-            ).padStart(2, '0')}–${String(leg.arr_time.h).padStart(2, '0')}:${String(leg.arr_time.m).padStart(
-              2,
-              '0',
-            )} (${TimeUtils.formatHM(leg.duration)})`,
-        )
-        .join(' | '),
-    }));
-    const csv = Papa.unparse(rows);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const anchor = document.createElement('a');
-    anchor.href = URL.createObjectURL(blob);
-    anchor.download = 'rail_results.csv';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
+    if (typeof Papa === "undefined") {
+      setMessage("Papa.parse is not loaded. Check your script includes.");
+      return;
+    }
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: function (results) {
+        loadRoutesFromCsvData(results.data || []);
+      },
+      error: function () {
+        setMessage("Error parsing CSV. Please check the file format.");
+      }
+    });
   }
-}
 
-document.addEventListener('DOMContentLoaded', () => {
-  const app = new RailSearchApp();
-  app.init();
-  // Iteration 2 booking system
-  window.booking = new BookingSystem(app.renderer);
-});
+  // ---------------- Routes: from backend (preferred) ----------------
 
-/* ===== Iteration 2: Booking Domain & Storage ===== */
-
-class Ticket {
-  constructor(id, reservationId) {
-    this.id = id; // numeric unique id (stringified when displayed)
-    this.reservationId = reservationId;
-  }
-}
-
-class Reservation {
-  constructor(reservationId, passenger, itineraryKey, fareClass) {
-    this.reservationId = reservationId; // uuid-like
-    this.passenger = passenger; // { name, age, id } ; store last name for lookup
-    this.itineraryKey = itineraryKey; // stable key string for itinerary uniqueness
-    this.fareClass = fareClass; // 'first' | 'second'
-  }
-}
-
-class Trip {
-  constructor(tripId, dateISO, itinerary, fareClass) {
-    this.tripId = tripId; // unique alphanumeric
-    this.dateISO = dateISO; // travel date YYYY-MM-DD
-    this.itinerary = itinerary; // snapshot of itinerary object
-    this.fareClass = fareClass;
-    this.reservations = []; // Reservation[]
-    this.tickets = []; // Ticket[]
-    this.createdAt = new Date().toISOString();
-  }
-  addReservation(reservation) {
-    this.reservations.push(reservation);
-  }
-  addTicket(ticket) {
-    this.tickets.push(ticket);
-  }
-}
-
-class BookingStorage {
-  static STORAGE_KEY = 'eu_rail_trips_v2';
-  static loadAll() {
+  async function loadRoutesFromAPI() {
     try {
-      const raw = localStorage.getItem(BookingStorage.STORAGE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
+      const res = await fetch(`${API_BASE}/routes`);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        setMessage(
+          "Backend reachable but no routes in DB. You can upload a CSV."
+        );
+        return;
+      }
+
+      routes = data
+        .map((row) => {
+          const id = row.route_id || row.id;
+          const from = row.departure_city;
+          const to = row.arrival_city;
+          const dep = row.departure_time;
+          const arr = row.arrival_time;
+          if (!id || !from || !to || !dep || !arr) return null;
+
+          const depMin = parseTimeToMin(dep);
+          const arrMin = parseTimeToMin(arr);
+          if (depMin == null || arrMin == null) return null;
+
+          const daysStr = row.days_of_op || "";
+          const firstRate =
+            row.first_class !== null ? Number(row.first_class) : null;
+          const secondRate =
+            row.second_class !== null ? Number(row.second_class) : null;
+
+          return {
+            routeId: String(id),
+            from: String(from),
+            to: String(to),
+            dep: String(dep),
+            arr: String(arr),
+            depMin,
+            arrMin,
+            duration: arrMin - depMin,
+            trainType: row.train_type || "",
+            daysStr,
+            days: parseDaysOfOperation(daysStr),
+            firstRate: isNaN(firstRate) ? null : firstRate,
+            secondRate: isNaN(secondRate) ? null : secondRate
+          };
+        })
+        .filter(Boolean);
+
+      updateKpis();
+      setMessage(
+        `Loaded ${routes.length} routes from backend database.`
+      );
+    } catch (err) {
+      console.warn("Could not load routes from backend:", err);
+      // Silent fallback: student can upload CSV instead.
+      setMessage(
+        "Could not load routes from backend. You can upload a CSV file."
+      );
+    }
+  }
+
+  // ---------------- Filters & search ----------------
+
+  function matchesDay(route, dayFilterArr) {
+    if (!dayFilterArr.length) return true;
+    if (!route.days.length) return true; // if no info, don't exclude
+    return dayFilterArr.some((d) => route.days.includes(d));
+  }
+
+  function routeMatchesFilters(route, filters) {
+    const {
+      traintype,
+      depFromMin,
+      depToMin,
+      maxFirst,
+      maxSecond
+    } = filters;
+
+    if (traintype && route.trainType) {
+      if (
+        !route.trainType.toLowerCase().includes(traintype.toLowerCase())
+      ) {
+        return false;
+      }
+    }
+
+    if (depFromMin != null && route.depMin < depFromMin) return false;
+    if (depToMin != null && route.depMin > depToMin) return false;
+
+    if (maxFirst != null && route.firstRate != null) {
+      if (route.firstRate > maxFirst) return false;
+    }
+    if (maxSecond != null && route.secondRate != null) {
+      if (route.secondRate > maxSecond) return false;
+    }
+
+    return true;
+  }
+
+  function buildConnections() {
+    const from = $("from").value.trim();
+    const to = $("to").value.trim();
+    const traintype = $("traintype") ? $("traintype").value.trim() : "";
+    const daysFilterRaw = $("days") ? $("days").value.trim() : "";
+    const depFrom = $("depfrom") ? $("depfrom").value.trim() : "";
+    const depTo = $("depto") ? $("depto").value.trim() : "";
+    const maxStops = parseInt($("maxstops").value, 10) || 0;
+    const minTransfer = parseInt($("minxfer").value, 10) || 0;
+    const maxFirst =
+      $("price1") && $("price1").value !== ""
+        ? parseFloat($("price1").value)
+        : null;
+    const maxSecond =
+      $("price2") && $("price2").value !== ""
+        ? parseFloat($("price2").value)
+        : null;
+    const chosenClass = $("class")
+      ? $("class").value || "second"
+      : "second";
+
+    if (!from || !to) {
+      setMessage("Please enter both a From and To city.");
       return [];
     }
-  }
-  static saveAll(trips) {
-    localStorage.setItem(BookingStorage.STORAGE_KEY, JSON.stringify(trips));
-  }
-  static pushTrip(trip) {
-    const all = BookingStorage.loadAll();
-    all.push(trip);
-    BookingStorage.saveAll(all);
-  }
-  static findByLastNameAndId(lastName, govId) {
-    const all = BookingStorage.loadAll();
-    const matches = [];
-    for (const t of all) {
-      for (const r of t.reservations) {
-        const ln = (r.passenger.name.split(' ').pop() || '').toLowerCase();
-        if (ln === lastName.toLowerCase() && r.passenger.id.toLowerCase() == govId.toLowerCase()) {
-          matches.push(t);
-          break;
+
+    const daysFilter = daysFilterRaw
+      ? parseDaysOfOperation(daysFilterRaw)
+      : [];
+
+    const baseFiltered = routes.filter(
+      (r) =>
+        matchesDay(r, daysFilter) &&
+        routeMatchesFilters(r, {
+          traintype,
+          depFromMin: depFrom ? parseTimeToMin(depFrom) : null,
+          depToMin: depTo ? parseTimeToMin(depTo) : null,
+          maxFirst,
+          maxSecond
+        })
+    );
+
+    const results = [];
+    const fromLower = from.toLowerCase();
+    const toLower = to.toLowerCase();
+
+    function legPrice(leg) {
+      if (chosenClass === "first") {
+        return leg.firstRate != null ? leg.firstRate : Infinity;
+      }
+      return leg.secondRate != null ? leg.secondRate : Infinity;
+    }
+
+    // Direct
+    if (maxStops >= 0) {
+      baseFiltered.forEach((r) => {
+        if (
+          r.from.toLowerCase() === fromLower &&
+          r.to.toLowerCase() === toLower
+        ) {
+          const price = legPrice(r);
+          if (!isFinite(price)) return;
+          results.push({
+            legs: [r],
+            stops: 0,
+            totalDuration: r.duration,
+            price,
+            chosenClass,
+            transfers: [],
+            path: `${r.from} → ${r.to}`
+          });
         }
+      });
+    }
+
+    // 1-stop
+    if (maxStops >= 1) {
+      baseFiltered.forEach((r1) => {
+        if (r1.from.toLowerCase() !== fromLower) return;
+        baseFiltered.forEach((r2) => {
+          if (r2.to.toLowerCase() !== toLower) return;
+          if (r1.to !== r2.from) return;
+          if (r2.depMin <= r1.arrMin) return;
+
+          if (!isLayoverAllowed(r1.arrMin, r2.depMin, minTransfer)) return;
+
+          const p1 = legPrice(r1);
+          const p2 = legPrice(r2);
+          if (!isFinite(p1) || !isFinite(p2)) return;
+
+          results.push({
+            legs: [r1, r2],
+            stops: 1,
+            totalDuration: r2.arrMin - r1.depMin,
+            price: p1 + p2,
+            chosenClass,
+            transfers: [
+              {
+                city: r1.to,
+                layover: r2.depMin - r1.arrMin
+              }
+            ],
+            path: `${r1.from} → ${r1.to} → ${r2.to}`
+          });
+        });
+      });
+    }
+
+    // 2-stop
+    if (maxStops >= 2) {
+      baseFiltered.forEach((r1) => {
+        if (r1.from.toLowerCase() !== fromLower) return;
+        baseFiltered.forEach((r2) => {
+          if (r2.from !== r1.to) return;
+          if (r2.depMin <= r1.arrMin) return;
+          baseFiltered.forEach((r3) => {
+            if (r3.to.toLowerCase() !== toLower) return;
+            if (r3.from !== r2.to) return;
+            if (r3.depMin <= r2.arrMin) return;
+
+            if (!isLayoverAllowed(r1.arrMin, r2.depMin, minTransfer))
+              return;
+            if (!isLayoverAllowed(r2.arrMin, r3.depMin, minTransfer))
+              return;
+
+            const p1 = legPrice(r1);
+            const p2 = legPrice(r2);
+            const p3 = legPrice(r3);
+            if (!isFinite(p1) || !isFinite(p2) || !isFinite(p3)) return;
+
+            results.push({
+              legs: [r1, r2, r3],
+              stops: 2,
+              totalDuration: r3.arrMin - r1.depMin,
+              price: p1 + p2 + p3,
+              chosenClass,
+              transfers: [
+                {
+                  city: r1.to,
+                  layover: r2.depMin - r1.arrMin
+                },
+                {
+                  city: r2.to,
+                  layover: r3.depMin - r2.arrMin
+                }
+              ],
+              path: `${r1.from} → ${r1.to} → ${r2.to} → ${r3.to}`
+            });
+          });
+        });
+      });
+    }
+
+    return results;
+  }
+
+  // ---------------- Results rendering ----------------
+
+  function renderResults() {
+    const table = $("results");
+    if (!table) return;
+
+    const tbody = table.querySelector("tbody");
+    tbody.innerHTML = "";
+
+    const sortBy = $("sort") ? $("sort").value : "duration";
+    if (sortBy === "duration") {
+      searchResults.sort(
+        (a, b) => a.totalDuration - b.totalDuration
+      );
+    } else if (sortBy === "price") {
+      searchResults.sort((a, b) => a.price - b.price);
+    }
+
+    searchResults.forEach((res, idx) => {
+      const tr = document.createElement("tr");
+
+      const transfersText =
+        res.transfers && res.transfers.length
+          ? res.transfers
+              .map(
+                (t) => `${t.city} (${t.layover} min)`
+              )
+              .join(", ")
+          : "—";
+
+      const legsDetails = res.legs
+        .map(
+          (l, i) =>
+            `Leg ${i + 1}: ${l.from} ${l.dep} → ${l.to} ${l.arr} (${l.trainType || "N/A"})`
+        )
+        .join("<br>");
+
+      const trainTypes = [
+        ...new Set(res.legs.map((l) => l.trainType || ""))
+      ]
+        .filter(Boolean)
+        .join(", ") || "Mixed";
+
+      tr.innerHTML = `
+        <td>${res.stops}</td>
+        <td class="nowrap">
+          ${minToHHMM(res.legs[0].depMin)} → ${minToHHMM(
+        res.legs[res.legs.length - 1].arrMin
+      )}
+          <br><span class="muted">${res.totalDuration} min</span>
+        </td>
+        <td>
+          €${res.price.toFixed(2)}
+          <br><span class="muted">${res.chosenClass} class</span>
+        </td>
+        <td>${trainTypes}</td>
+        <td>${res.legs[0].daysStr || "—"}</td>
+        <td>${transfersText}</td>
+        <td class="path">${res.path}</td>
+        <td>${legsDetails}</td>
+        <td>
+          <button class="secondary btn-select" data-idx="${idx}">
+            Select
+          </button>
+        </td>
+      `;
+
+      if (idx === selectedIndex) {
+        tr.style.outline = "1px solid var(--accent)";
+      }
+
+      tbody.appendChild(tr);
+    });
+
+    if ($("summary")) {
+      $("summary").textContent =
+        searchResults.length === 0
+          ? "No itineraries found."
+          : `${searchResults.length} itineraries found.`;
+    }
+
+    updateKpis();
+  }
+
+  // ---------------- Travellers (current booking state) ----------------
+
+  function renderTravellers() {
+    const table = $("travellers-table");
+    if (!table) return;
+    const tbody = table.querySelector("tbody");
+    tbody.innerHTML = "";
+    tempTravellers.forEach((t, idx) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td>${t.name}</td>
+        <td>${t.age ?? ""}</td>
+        <td>${t.govId}</td>
+        <td>
+          <button class="secondary btn-remove-trav" data-idx="${idx}">
+            Remove
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ---------------- View Trips rendering ----------------
+
+  function renderTripsTable(tbodyId, rows) {
+    const table = $(tbodyId);
+    if (!table) return;
+    const tbody = table.querySelector("tbody");
+    tbody.innerHTML = "";
+    if (!rows || !rows.length) return;
+
+    rows.forEach((r) => {
+      // For backend response: {trip_id, date, itinerary, fare_class, ticket_price}
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${r.trip_id}</td>
+        <td>${r.date}</td>
+        <td>${r.itinerary}</td>
+        <td>${r.fare_class || ""}</td>
+        <td>${r.ticket_price != null ? "€" + Number(r.ticket_price).toFixed(2) : ""}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ---------------- Booking (calls backend) ----------------
+
+  async function bookSelectedTrip() {
+    const travelDate = $("traveldate").value;
+    const fareClass = $("fare-class")
+      ? $("fare-class").value || "second"
+      : "second";
+    const bookMsg = $("book-msg");
+
+    if (selectedIndex == null || !searchResults[selectedIndex]) {
+      if (bookMsg) {
+        bookMsg.textContent = "Please select an itinerary to book.";
+        bookMsg.className = "hint error";
+      }
+      return;
+    }
+    if (!travelDate) {
+      if (bookMsg) {
+        bookMsg.textContent = "Please select a travel date.";
+        bookMsg.className = "hint error";
+      }
+      return;
+    }
+    if (!tempTravellers.length) {
+      if (bookMsg) {
+        bookMsg.textContent = "Please add at least one traveller.";
+        bookMsg.className = "hint error";
+      }
+      return;
+    }
+
+    const conn = searchResults[selectedIndex];
+    const travelDay = getDayAbbrevFromDateStr(travelDate);
+
+    // validate days of operation
+    for (const leg of conn.legs) {
+      if (leg.days.length && !leg.days.includes(travelDay)) {
+        if (bookMsg) {
+          bookMsg.textContent = `Selected itinerary is not valid on ${travelDay}.`;
+          bookMsg.className = "hint error";
+        }
+        return;
       }
     }
-    return matches;
-  }
-}
 
-class BookingSystem {
-  constructor(renderer) {
-    this.renderer = renderer;
-    this.selectedItinerary = null;
-    this.selectedKey = null;
-    this.travellers = []; // array of {name, age, id}
-    this.dateISO = null;
-    this.fareClass = 'second';
-    // Elements
-    this.inputs = {
-      date: document.getElementById('traveldate'),
-      selection: document.getElementById('selected-connection'),
-      fare: document.getElementById('fare-class'),
-      addName: document.getElementById('trav-name'),
-      addAge: document.getElementById('trav-age'),
-      addId: document.getElementById('trav-id'),
-      tableBody: document.querySelector('#travellers-table tbody'),
-      msg: document.getElementById('book-msg'),
-    };
-    this.buttons = {
-      addTraveller: document.getElementById('btn-add-traveller'),
-      clearSelection: document.getElementById('btn-clear-selection'),
-      book: document.getElementById('btn-book'),
-      view: document.getElementById('btn-view-trips'),
-    };
-    this.viewInputs = {
-      lastName: document.getElementById('view-lastname'),
-      govId: document.getElementById('view-id'),
-      upTbody: document.querySelector('#trips-upcoming tbody'),
-      hiTbody: document.querySelector('#trips-history tbody'),
-    };
-    this.bind();
-  }
+    // compute per-passenger price for chosen class
+    const totalPricePerPassenger = conn.legs.reduce((sum, leg) => {
+      if (fareClass === "first") {
+        return (
+          sum +
+          (leg.firstRate != null
+            ? leg.firstRate
+            : Number.POSITIVE_INFINITY)
+        );
+      }
+      return (
+        sum +
+        (leg.secondRate != null
+          ? leg.secondRate
+          : Number.POSITIVE_INFINITY)
+      );
+    }, 0);
 
-  bind() {
-    this.buttons.addTraveller?.addEventListener('click', () => this.addTravellerFromInputs());
-    this.buttons.clearSelection?.addEventListener('click', () => this.clearSelection());
-    this.buttons.book?.addEventListener('click', () => this.bookTrip());
-    this.buttons.view?.addEventListener('click', () => this.viewTrips());
-    this.inputs.fare?.addEventListener('change', () => (this.fareClass = this.inputs.fare.value));
-    document.addEventListener('itinerary:selected', (e) => {
-      this.setSelection(e.detail.itinerary);
-    });
-  }
-
-  setSelection(itinerary) {
-    this.selectedItinerary = itinerary;
-    this.selectedKey = BookingSystem.keyForItinerary(itinerary);
-    const summary = BookingSystem.humanSummary(itinerary);
-    if (this.inputs.selection) this.inputs.selection.value = summary;
-    this.info('Selected itinerary.');
-  }
-
-  clearSelection() {
-    this.selectedItinerary = null;
-    this.selectedKey = null;
-    if (this.inputs.selection) this.inputs.selection.value = '';
-  }
-
-  addTravellerFromInputs() {
-    const name = (this.inputs.addName?.value || '').trim();
-    const age = parseInt(this.inputs.addAge?.value || '0', 10);
-    const govId = (this.inputs.addId?.value || '').trim();
-    if (!name || !govId || !(age >= 0)) return this.error('Provide traveller name, age, and ID.');
-    // Enforce single reservation per client per selected connection
-    if (this.selectedKey && this.travellers.some(t => t.id.toLowerCase() === govId.toLowerCase())) {
-      return this.error('This traveller is already in this booking.');
+    if (!isFinite(totalPricePerPassenger)) {
+      if (bookMsg) {
+        bookMsg.textContent =
+          "Cannot compute price for selected class on all legs.";
+        bookMsg.className = "hint error";
+      }
+      return;
     }
-    this.travellers.push({ name, age, id: govId });
-    this.inputs.addName.value = '';
-    this.inputs.addAge.value = '';
-    this.inputs.addId.value = '';
-    this.renderTravellers();
-  }
 
-  removeTraveller(idx) {
-    this.travellers.splice(idx, 1);
-    this.renderTravellers();
-  }
+    // build payload for backend
+    const payload = {
+      travel_date: travelDate,
+      origin: conn.legs[0].from,
+      destination: conn.legs[conn.legs.length - 1].to,
+      stops: conn.stops,
+      total_duration: conn.totalDuration,
+      fare_class: fareClass,
+      path_summary: conn.path,
+      price_per_passenger: totalPricePerPassenger,
+      travellers: tempTravellers.map((t) => ({
+        name: t.name,
+        age: t.age,
+        gov_id: t.govId
+      }))
+    };
 
-  renderTravellers() {
-    const tb = this.inputs.tableBody;
-    if (!tb) return;
-    tb.innerHTML = '';
-    this.travellers.forEach((t, i) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i+1}</td><td>${t.name}</td><td>${t.age}</td><td>${t.id}</td><td><button class="secondary" data-remove="${i}">Remove</button></td>`;
-      tb.appendChild(tr);
-    });
-    tb.querySelectorAll('button[data-remove]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const i = parseInt(btn.getAttribute('data-remove'), 10);
-        this.removeTraveller(i);
+    try {
+      const res = await fetch(`${API_BASE}/trips`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
       });
-    });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(
+          errData.error || `Booking failed (HTTP ${res.status}).`
+        );
+      }
+
+      const data = await res.json();
+      const tripId = data.trip_id;
+
+      // clear state
+      tempTravellers = [];
+      renderTravellers();
+      selectedIndex = null;
+      if ($("selected-connection"))
+        $("selected-connection").value = "";
+      renderResults();
+
+      if (bookMsg) {
+        bookMsg.textContent = `Trip booked successfully. Your Trip ID is ${tripId}.`;
+        bookMsg.className = "hint ok";
+      }
+    } catch (err) {
+      console.error(err);
+      if (bookMsg) {
+        bookMsg.textContent =
+          "Error booking trip: " + (err.message || "Unknown error");
+        bookMsg.className = "hint error";
+      }
+    }
   }
 
-  validate() {
-    if (!this.selectedItinerary) return 'Select an itinerary from results first.';
-    const dateISO = this.inputs.date?.value;
-    if (!dateISO) return 'Pick a travel date.';
-    if (!this.travellers.length) return 'Add at least one traveller.';
-    return null;
-  }
+  // ---------------- View Trips (calls backend) ----------------
 
-  bookTrip() {
-    const err = this.validate();
-    if (err) return this.error(err);
-    const dateISO = this.inputs.date.value;
-    // Uniqueness: for a given connection (itineraryKey) a client may only have a single reservation under their name.
-    // Enforce within the same trip build (we already avoid duplicates in this.travellers).
-    const tripId = BookingSystem.randomAlphaId();
-    const trip = new Trip(tripId, dateISO, this.selectedItinerary, this.fareClass);
+  async function fetchAndRenderTrips() {
+    const lastName = $("view-lastname").value.trim();
+    const govId = $("view-id").value.trim();
+    const bookMsg = $("book-msg");
 
-    for (const t of this.travellers) {
-      const reservationId = BookingSystem.uuid4();
-      const res = new Reservation(reservationId, t, this.selectedKey, this.fareClass);
-      trip.addReservation(res);
-      const ticketNum = BookingSystem.randomTicketNumber();
-      trip.addTicket(new Ticket(ticketNum, reservationId));
+    if (!lastName || !govId) {
+      if (bookMsg) {
+        bookMsg.textContent =
+          "Enter Last Name and Government ID to view trips.";
+        bookMsg.className = "hint error";
+      }
+      return;
     }
 
-    BookingStorage.pushTrip(trip);
-    this.info(`Trip booked! Trip ID ${trip.tripId} with ${trip.reservations.length} reservation(s).`);
-    // Reset panel
-    this.travellers = [];
-    this.renderTravellers();
-    this.clearSelection();
-  }
+    try {
+      const url = `${API_BASE}/trips?last_name=${encodeURIComponent(
+        lastName
+      )}&gov_id=${encodeURIComponent(govId)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
 
-  static keyForItinerary(it) {
-    // Create a stable key based on leg cities and times
-    const parts = it.legs.map(l => `${l.dep_city}-${l.arr_city}-${l.dep_time.h}:${l.dep_time.m}-${l.arr_time.h}:${l.arr_time.m}`);
-    return parts.join('|');
-  }
+      renderTripsTable("trips-upcoming", data.upcoming);
+      renderTripsTable("trips-history", data.history);
 
-  static humanSummary(it) {
-    const first = it.legs[0];
-    const last = it.legs[it.legs.length-1];
-    return `${first.dep_city} ${String(first.dep_time.h).padStart(2,'0')}:${String(first.dep_time.m).padStart(2,'0')} → ${last.arr_city} ${String(last.arr_time.h).padStart(2,'0')}:${String(last.arr_time.m).padStart(2,'0')} (${it.legs.length-1} stop${it.legs.length-1===1?'':'s'})`;
-  }
-
-  static randomTicketNumber() {
-    return Math.floor(100000000 + Math.random() * 900000000); // 9-digit numeric
-  }
-  static randomAlphaId() {
-    return Math.random().toString(36).slice(2, 6).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
-  }
-  static uuid4() {
-    // Simple UUIDv4
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = (Math.random() * 16) | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  }
-
-  info(msg) { if (this.inputs.msg) this.inputs.msg.innerHTML = `<span class="ok">${msg}</span>`; }
-  error(msg) { if (this.inputs.msg) this.inputs.msg.innerHTML = `<span class="error">${msg}</span>`; }
-
-  viewTrips() {
-    const lastName = (this.viewInputs.lastName?.value || '').trim();
-    const govId = (this.viewInputs.govId?.value || '').trim();
-    if (!lastName || !govId) return;
-    const trips = BookingStorage.findByLastNameAndId(lastName, govId);
-    const now = new Date();
-    const upRows = [];
-    const hiRows = [];
-    for (const t of trips) {
-      const date = new Date(t.dateISO + 'T00:00:00');
-      const isHistory = date < new Date(now.toDateString());
-      const rowHtml = BookingSystem.renderTripRow(t);
-      (isHistory ? hiRows : upRows).push(rowHtml);
+      if (bookMsg) {
+        bookMsg.textContent = "";
+        bookMsg.className = "hint";
+      }
+    } catch (err) {
+      console.error(err);
+      if (bookMsg) {
+        bookMsg.textContent =
+          "Error fetching trips. Make sure the backend is running.";
+        bookMsg.className = "hint error";
+      }
     }
-    this.viewInputs.upTbody.innerHTML = upRows.join('') || `<tr><td colspan="5" class="muted">No upcoming trips.</td></tr>`;
-    this.viewInputs.hiTbody.innerHTML = hiRows.join('') || `<tr><td colspan="5" class="muted">No past trips.</td></tr>`;
   }
 
-  static renderTripRow(t) {
-    const pax = t.reservations.map(r => r.passenger.name).join(', ');
-    const itin = BookingSystem.humanSummary(t.itinerary);
-    const tickets = t.tickets.map(tk => `<span class="badge">#${tk.id}</span>`).join(' ');
-    return `<tr><td class="nowrap">${t.tripId}</td><td>${t.dateISO}</td><td>${pax}</td><td>${itin}</td><td>${tickets}</td></tr>`;
+  // ---------------- Export search results to CSV ----------------
+
+  function exportResultsToCsv() {
+    if (!searchResults.length) {
+      setMessage("No results to export. Run a search first.");
+      return;
+    }
+
+    const rows = [];
+    rows.push([
+      "Stops",
+      "TotalDurationMin",
+      "ChosenClass",
+      "Price",
+      "Path",
+      "Transfers",
+      "Legs"
+    ]);
+
+    searchResults.forEach((r) => {
+      const transfers = (r.transfers || [])
+        .map((t) => `${t.city} (${t.layover} min)`)
+        .join(" | ");
+      const legs = r.legs
+        .map(
+          (l, i) =>
+            `L${i + 1}:${l.from} ${l.dep}->${l.to} ${l.arr} ${l.trainType}`
+        )
+        .join(" | ");
+      rows.push([
+        r.stops,
+        r.totalDuration,
+        r.chosenClass,
+        r.price.toFixed(2),
+        r.path,
+        transfers,
+        legs
+      ]);
+    });
+
+    const csv = rows
+      .map((row) =>
+        row
+          .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "eu_rail_search_results.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
-}
+
+  // ---------------- Event wiring ----------------
+
+  function attachEvents() {
+    // CSV upload (optional)
+    if ($("csv")) {
+      $("csv").addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        handleCsvUpload(file);
+      });
+    }
+
+    // Search
+    if ($("btn-search")) {
+      $("btn-search").addEventListener("click", () => {
+        if (!routes.length) {
+          setMessage(
+            "No routes loaded. Ensure backend /api/routes is populated or upload a CSV."
+          );
+          return;
+        }
+        selectedIndex = null;
+        if ($("selected-connection"))
+          $("selected-connection").value = "";
+        searchResults = buildConnections();
+        renderResults();
+      });
+    }
+
+    // Reset
+    if ($("btn-reset")) {
+      $("btn-reset").addEventListener("click", () => {
+        [
+          "from",
+          "to",
+          "traintype",
+          "days",
+          "depfrom",
+          "depto",
+          "price1",
+          "price2"
+        ].forEach((id) => {
+          if ($(id)) $(id).value = "";
+        });
+        if ($("maxstops")) $("maxstops").value = "2";
+        if ($("minxfer")) $("minxfer").value = "10";
+        if ($("class")) $("class").value = "second";
+        if ($("sort")) $("sort").value = "duration";
+        if ($("summary")) $("summary").textContent = "";
+        setMessage("");
+        selectedIndex = null;
+        searchResults = [];
+        if ($("results"))
+          $("results").querySelector("tbody").innerHTML = "";
+        if ($("kpi-results")) $("kpi-results").textContent = "0";
+        if ($("selected-connection"))
+          $("selected-connection").value = "";
+        tempTravellers = [];
+        renderTravellers();
+        if ($("book-msg")) {
+          $("book-msg").textContent = "";
+          $("book-msg").className = "hint";
+        }
+      });
+    }
+
+    // Sort change
+    if ($("sort")) {
+      $("sort").addEventListener("change", () => {
+        if (searchResults.length) renderResults();
+      });
+    }
+
+    // Select itinerary
+    if ($("results")) {
+      $("results").addEventListener("click", (e) => {
+        const btn = e.target.closest(".btn-select");
+        if (!btn) return;
+        const idx = Number(btn.dataset.idx);
+        if (isNaN(idx) || !searchResults[idx]) return;
+        selectedIndex = idx;
+        const sel = searchResults[idx];
+        if ($("selected-connection")) {
+          $("selected-connection").value = `Trip: ${sel.path} | Stops: ${
+            sel.stops
+          } | Duration: ${sel.totalDuration} min | €${sel.price.toFixed(
+            2
+          )} (${sel.chosenClass} class)`;
+        }
+        if ($("book-msg")) {
+          $("book-msg").textContent =
+            "Itinerary selected. Add travellers and book.";
+          $("book-msg").className = "hint";
+        }
+        renderResults();
+      });
+    }
+
+    // Clear selection
+    if ($("btn-clear-selection")) {
+      $("btn-clear-selection").addEventListener("click", () => {
+        selectedIndex = null;
+        if ($("selected-connection"))
+          $("selected-connection").value = "";
+        if ($("book-msg")) {
+          $("book-msg").textContent = "";
+          $("book-msg").className = "hint";
+        }
+        renderResults();
+      });
+    }
+
+    // Add traveller
+    if ($("btn-add-traveller")) {
+      $("btn-add-traveller").addEventListener("click", () => {
+        const name = $("trav-name").value.trim();
+        const ageVal = $("trav-age").value;
+        const id = $("trav-id").value.trim();
+        const bookMsg = $("book-msg");
+
+        if (!name || !id) {
+          if (bookMsg) {
+            bookMsg.textContent =
+              "Traveller name and Government ID are required.";
+            bookMsg.className = "hint error";
+          }
+          return;
+        }
+
+        if (
+          tempTravellers.some(
+            (t) => t.govId.toLowerCase() === id.toLowerCase()
+          )
+        ) {
+          if (bookMsg) {
+            bookMsg.textContent =
+              "A traveller with this ID is already added.";
+            bookMsg.className = "hint error";
+          }
+          return;
+        }
+
+        const age =
+          ageVal !== "" && ageVal != null ? Number(ageVal) : null;
+
+        tempTravellers.push({ name, age, govId: id });
+        $("trav-name").value = "";
+        $("trav-age").value = "";
+        $("trav-id").value = "";
+        if (bookMsg) {
+          bookMsg.textContent = "";
+          bookMsg.className = "hint";
+        }
+        renderTravellers();
+      });
+    }
+
+    // Remove traveller
+    if ($("travellers-table")) {
+      $("travellers-table").addEventListener("click", (e) => {
+        const btn = e.target.closest(".btn-remove-trav");
+        if (!btn) return;
+        const idx = Number(btn.dataset.idx);
+        if (!isNaN(idx)) {
+          tempTravellers.splice(idx, 1);
+          renderTravellers();
+        }
+      });
+    }
+
+    // Book trip (backend)
+    if ($("btn-book")) {
+      $("btn-book").addEventListener("click", () => {
+        bookSelectedTrip();
+      });
+    }
+
+    // View trips (backend)
+    if ($("btn-view-trips")) {
+      $("btn-view-trips").addEventListener("click", () => {
+        fetchAndRenderTrips();
+      });
+    }
+
+    // Export results
+    if ($("btn-export")) {
+      $("btn-export").addEventListener("click", () => {
+        exportResultsToCsv();
+      });
+    }
+  }
+
+  // ---------------- Init ----------------
+
+  function init() {
+    updateKpis();
+    attachEvents();
+    // Try to load routes from backend DB first; if that fails,
+    // user can upload CSV to populate routes.
+    loadRoutesFromAPI();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
