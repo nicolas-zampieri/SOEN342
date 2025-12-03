@@ -1,0 +1,33 @@
+@startuml ExcecuteSearch
+title Internal Operation — handleSearch()
+
+actor User as U
+participant "RailSearchApp" as App
+participant "Query" as Q
+participant "ItineraryService" as SVC
+participant "ResultRenderer" as R
+
+U -> App : handleSearch()
+
+alt No routes loaded
+  App -> R : setMessage("No routes loaded")
+  return
+end
+
+App -> Q : fromForm()
+Q --> App : query
+
+alt invalid query
+  App -> R : setMessage(error)
+  return
+end
+
+App -> SVC : find(routes, query)
+SVC --> App : searchResults[]
+
+App -> R : renderResults(searchResults, selectedIndex)
+App -> R : updateKpis(routes, searchResults)
+App -> R : setMessage("")
+
+deactivate UI
+@enduml

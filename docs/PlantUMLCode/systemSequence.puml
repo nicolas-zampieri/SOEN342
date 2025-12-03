@@ -1,0 +1,72 @@
+@startuml SystemSequenceDiagram
+title System Sequence Diagram for EU Rail Search & Booking System
+
+actor User as U
+participant "Rail Search System" as System
+
+== Data Loading ==
+U -> System : loadRoutesFromAPI()
+System --> U : routesLoaded(routesCount, cityCount, directPairs)
+
+opt CSV Fallback
+    U -> System : loadCSV(file)
+    System --> U : CSVLoaded(routesCount, cityCount, directPairs)
+end
+
+== Search Operations ==
+loop Search Process
+    U -> System : setCriteria(depCity, arrCity, trainType, days,\n depFrom?, depTo?, maxPriceFirst?, maxPriceSecond?,\n maxStops=2, minTransfer=10, cls='second', sort='duration')
+    System --> U : criteriaAccepted()
+    
+    U -> System : executeSearch()
+    System --> U : searchCompleted(itineraries[], resultsCount)
+    
+    opt Export Results
+        U -> System : exportResults()
+        System --> U : csvFileGenerated()
+    end
+    
+    opt Reset Filters
+        U -> System : resetFilters()
+        System --> U : filtersCleared()
+    end
+end
+
+== Booking Operations (Iteration 3 - Backend Connected) ==
+opt Booking Process
+    U -> System : selectItinerary(itinerary)
+    System --> U : itinerarySelected(summary)
+    
+    U -> System : setTravelDate(dateISO)
+    System --> U : travelDateSet()
+    
+    U -> System : setFareClass(cls)
+    System --> U : fareClassSet()
+    
+    loop Add Travellers
+        U -> System : addTraveller(name, age, govId)
+        System --> U : travellerAdded()
+        
+        opt Remove Traveller
+            U -> System : removeTraveller(index)
+            System --> U : travellerRemoved()
+        end
+    end
+    
+    U -> System : bookSelectedTrip()
+    System --> U : tripBooked(tripId)
+    
+    opt Clear Selection
+        U -> System : clearSelection()
+        System --> U : selectionCleared()
+    end
+end
+
+== Trip Management ==
+opt View Trips
+    U -> System : fetchAndRenderTrips(lastName, govId)
+    System --> U : tripsRetrieved(upcomingTrips[], historyTrips[])
+end
+
+@enduml
+

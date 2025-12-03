@@ -1,0 +1,12 @@
+@startuml systemOperation
+class "System" {
+    + loadRoutesFromAPI(): Promise<void>
+    + loadCSV(file): void
+    + handleSearch(): void
+    + bookSelectedTrip(): Promise<void>
+    + fetchAndRenderTrips(lastName, govId): Promise<void>
+    + addTraveller(): void
+    + reset(): void
+    + exportResultsToCsv(): void
+}
+@enduml

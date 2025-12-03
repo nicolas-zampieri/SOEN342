@@ -1,0 +1,133 @@
+@startuml DomainModel
+title EU Rail Search — Domain Model (Iteration 3)
+left to right direction
+
+' ==== Enumerations ====
+enum Day {
+}
+
+enum ClassType {
+}
+
+' ==== Value Objects ====
+class TimeOfDay <<ValueObject>> {
+}
+
+class Transfer <<ValueObject>> {
+}
+
+' ==== Database Schema ====
+entity "Route" as RouteDB <<table>> {
+}
+
+entity "Traveller" as TravellerDB <<table>> {
+}
+
+entity "Trip" as TripDB <<table>> {
+}
+
+entity "TripTraveller" as TripTravellerDB <<table>> {
+}
+
+' ==== Domain Entities (Client-Side) ====
+class Route <<Entity>> {
+}
+
+class Itinerary <<Entity>> {
+}
+
+class Query <<Entity>> {
+}
+
+class Traveller <<Entity>> {
+}
+
+class Ticket <<Entity>> {
+}
+
+class Reservation <<Entity>> {
+}
+
+class Trip <<Entity>> {
+}
+
+' ==== Services (Client-Side) ====
+class ItineraryService <<Service>> {
+}
+
+class BookingService <<Service>> {
+}
+
+class TripViewService <<Service>> {
+}
+
+class CSVLoader <<Service>> {
+}
+
+class ResultRenderer <<Service>> {
+}
+
+' ==== Utilities ====
+class TimeUtils <<Utility>> {
+}
+
+class DayUtils <<Utility>> {
+}
+
+class HeaderNormalizer <<Utility>> {
+}
+
+' ==== Application Controller ====
+class RailSearchApp <<Controller>> {
+}
+
+' ==== Relationships ====
+Route "1" *-- "1" TimeOfDay : dep_time
+Route "1" *-- "1" TimeOfDay : arr_time
+
+Itinerary "1" *-- "1..*" Route : legs
+Itinerary "1" *-- "0..*" Transfer : transfers
+
+Trip "1" *-- "1..*" Reservation : reservations
+Reservation "1" *-- "1" Traveller : traveller
+Reservation "1" *-- "1" Ticket : ticket
+Reservation "1" o-- "1" Route : route
+
+Query ..> TimeOfDay : uses
+
+RailSearchApp "1" *-- "1" ItineraryService
+RailSearchApp "1" *-- "1" BookingService
+RailSearchApp "1" *-- "1" TripViewService
+RailSearchApp "1" *-- "1" CSVLoader
+RailSearchApp "1" *-- "1" ResultRenderer
+RailSearchApp "1" o-- "0..*" Route : routes
+RailSearchApp "1" o-- "0..*" Itinerary : searchResults
+RailSearchApp "1" o-- "0..*" Traveller : tempTravellers
+
+ItineraryService ..> Route : uses
+ItineraryService ..> Itinerary : creates
+ItineraryService ..> Query : uses
+
+BookingService ..> Itinerary : uses
+BookingService ..> Traveller : uses
+BookingService ..> Trip : creates
+
+TripViewService ..> Trip : fetches
+
+CSVLoader ..> Route : creates
+CSVLoader ..> HeaderNormalizer : uses
+
+ResultRenderer ..> Itinerary : renders
+ResultRenderer ..> Traveller : renders
+
+' Database mappings
+RouteDB <.. Route : maps_from
+TravellerDB <.. Traveller : persisted_as
+TripDB <.. Trip : persisted_as
+TripTravellerDB <.. Reservation : link_table
+
+' Utilities
+TimeUtils ..> TimeOfDay : creates
+DayUtils ..> Day : uses
+
+@enduml

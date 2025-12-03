@@ -1,0 +1,40 @@
+@startuml BookTrip
+title Book a Trip Sequence Diagram (Iteration 3)
+
+actor Client
+participant "RailSearchApp" as App
+participant "BookingService" as BookSvc
+participant "Backend API" as API
+participant "ResultRenderer" as R
+
+Client -> App: bookSelectedTrip()
+
+activate App
+App -> App: Validate (itinerary, travelDate, travellers)
+
+alt valid input
+  App -> BookSvc: bookTrip(itinerary, travellers, travelDate, fareClass)
+  
+  activate BookSvc
+  BookSvc -> BookSvc: Validate day of week
+  BookSvc -> BookSvc: Calculate price
+  
+  BookSvc -> API: POST /api/trips\n{travel_date, origin, destination, stops,\ntotal_duration, fare_class, path_summary,\nprice_per_passenger, travellers[]}
+  
+  API --> BookSvc: {trip_id}
+  
+  BookSvc -> BookSvc: Create Trip, Reservations, Tickets
+  BookSvc --> App: trip
+  deactivate BookSvc
+  
+  App -> R: updateBookMessage("Trip booked successfully. Trip ID: {tripId}", "hint ok")
+  App -> App: Clear travellers and selection
+  App -> R: renderTravellers([])
+  App -> R: renderResults(searchResults, null)
+else invalid
+  App -> R: updateBookMessage(error, "hint error")
+end
+
+App --> Client: Show confirmation or error
+deactivate App
+@enduml

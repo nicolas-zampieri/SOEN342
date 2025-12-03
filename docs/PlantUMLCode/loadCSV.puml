@@ -1,0 +1,24 @@
+@startuml loadCSV
+title Internal Operation — loadCSV() and loadRoutesFromAPI()
+
+actor User as U
+participant "RailSearchApp" as App
+participant "CSVLoader" as Loader
+participant "ResultRenderer" as Renderer
+participant "Backend API" as API
+
+alt Load from API (Primary)
+    U -> App : init()
+    App -> API : GET /api/routes
+    API --> App : routes[]
+    App -> Renderer : updateKpis(routes, [])
+    App -> Renderer : setMessage("Loaded routes from backend")
+else Load from CSV (Fallback)
+    U -> App : loadCSV(file)
+    App -> Loader : handleCsvUpload(file, callback)
+    Loader --> App : routes[]
+    App -> Renderer : updateKpis(routes, [])
+    App -> Renderer : setMessage("Loaded routes from CSV")
+end
+
+@enduml

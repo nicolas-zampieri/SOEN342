@@ -1,0 +1,28 @@
+@startuml viewtrips
+title View Trips Operation Sequence  
+
+actor Client
+participant "RailSearchApp" as App
+participant "TripViewService" as TripSvc
+participant "Backend API" as API
+participant "ResultRenderer" as R
+
+Client -> App: fetchAndRenderTrips()
+App -> App: Get lastName, govId from inputs
+
+activate App
+App -> TripSvc: fetchTrips(lastName, govId)
+
+activate TripSvc
+TripSvc -> API: GET /api/trips?last_name=...&gov_id=...
+API --> TripSvc: {upcoming: [...], history: [...]}
+TripSvc --> App: tripData
+deactivate TripSvc
+
+App -> R: renderTripsTable("trips-upcoming", tripData.upcoming)
+App -> R: renderTripsTable("trips-history", tripData.history)
+App -> R: updateBookMessage("", "hint")
+deactivate App
+
+App --> Client: Display trips (Upcoming/History tables)
+@enduml

@@ -10,3 +10,20 @@ Icon?
 # macOS folder custom attributes
 .Spotlight-V100
 .Trashes
+
+# Virtual environment
+venv/
+.venv/
+..venv/
+src/..venv
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+.env.*
+
+# macOS system files
+.DS_Store
