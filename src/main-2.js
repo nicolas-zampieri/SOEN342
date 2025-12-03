@@ -293,7 +293,21 @@ class ResultRenderer {
     this.tableBody.innerHTML = '';
     if (!itineraries.length) {
       const row = document.createElement('tr');
+      row.classList.add('result-row');
       row.innerHTML = `<td colspan="8" class="muted" style="text-align:center;padding:12px 8px;">No itineraries match the current filters.</td>`;
+      
+      // Append action cell with Select button
+      const actionTd = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.className = 'secondary';
+      btn.textContent = 'Select';
+      btn.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('itinerary:selected', { detail: { itinerary } }));
+        this.updateMessage('Itinerary selected for booking.');
+      });
+      actionTd.appendChild(btn);
+      row.appendChild(actionTd);
+
       this.tableBody.appendChild(row);
       this.updateResultsCount(0);
       return;
@@ -331,6 +345,7 @@ class ResultRenderer {
         .join(' | ');
 
       const row = document.createElement('tr');
+      row.classList.add('result-row');
       row.innerHTML = `
         <td class="nowrap"><span class="badge">${stops}</span></td>
         <td class="nowrap">${TimeUtils.formatHM(ItineraryService.totalDuration(itinerary))}</td>
@@ -341,6 +356,19 @@ class ResultRenderer {
         <td class="path">${pathSegments.join(' → ')}</td>
         <td>${legsText}</td>
       `;
+      
+      // Append action cell with Select button
+      const actionTd = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.className = 'secondary';
+      btn.textContent = 'Select';
+      btn.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('itinerary:selected', { detail: { itinerary } }));
+        this.updateMessage('Itinerary selected for booking.');
+      });
+      actionTd.appendChild(btn);
+      row.appendChild(actionTd);
+
       this.tableBody.appendChild(row);
     }
     this.updateResultsCount(itineraries.length);
@@ -589,4 +617,261 @@ class RailSearchApp {
 document.addEventListener('DOMContentLoaded', () => {
   const app = new RailSearchApp();
   app.init();
+  // Iteration 2 booking system
+  window.booking = new BookingSystem(app.renderer);
 });
+
+/* ===== Iteration 2: Booking Domain & Storage ===== */
+
+class Ticket {
+  constructor(id, reservationId) {
+    this.id = id; // numeric unique id (stringified when displayed)
+    this.reservationId = reservationId;
+  }
+}
+
+class Reservation {
+  constructor(reservationId, passenger, itineraryKey, fareClass) {
+    this.reservationId = reservationId; // uuid-like
+    this.passenger = passenger; // { name, age, id } ; store last name for lookup
+    this.itineraryKey = itineraryKey; // stable key string for itinerary uniqueness
+    this.fareClass = fareClass; // 'first' | 'second'
+  }
+}
+
+class Trip {
+  constructor(tripId, dateISO, itinerary, fareClass) {
+    this.tripId = tripId; // unique alphanumeric
+    this.dateISO = dateISO; // travel date YYYY-MM-DD
+    this.itinerary = itinerary; // snapshot of itinerary object
+    this.fareClass = fareClass;
+    this.reservations = []; // Reservation[]
+    this.tickets = []; // Ticket[]
+    this.createdAt = new Date().toISOString();
+  }
+  addReservation(reservation) {
+    this.reservations.push(reservation);
+  }
+  addTicket(ticket) {
+    this.tickets.push(ticket);
+  }
+}
+
+class BookingStorage {
+  static STORAGE_KEY = 'eu_rail_trips_v2';
+  static loadAll() {
+    try {
+      const raw = localStorage.getItem(BookingStorage.STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+  static saveAll(trips) {
+    localStorage.setItem(BookingStorage.STORAGE_KEY, JSON.stringify(trips));
+  }
+  static pushTrip(trip) {
+    const all = BookingStorage.loadAll();
+    all.push(trip);
+    BookingStorage.saveAll(all);
+  }
+  static findByLastNameAndId(lastName, govId) {
+    const all = BookingStorage.loadAll();
+    const matches = [];
+    for (const t of all) {
+      for (const r of t.reservations) {
+        const ln = (r.passenger.name.split(' ').pop() || '').toLowerCase();
+        if (ln === lastName.toLowerCase() && r.passenger.id.toLowerCase() == govId.toLowerCase()) {
+          matches.push(t);
+          break;
+        }
+      }
+    }
+    return matches;
+  }
+}
+
+class BookingSystem {
+  constructor(renderer) {
+    this.renderer = renderer;
+    this.selectedItinerary = null;
+    this.selectedKey = null;
+    this.travellers = []; // array of {name, age, id}
+    this.dateISO = null;
+    this.fareClass = 'second';
+    // Elements
+    this.inputs = {
+      date: document.getElementById('traveldate'),
+      selection: document.getElementById('selected-connection'),
+      fare: document.getElementById('fare-class'),
+      addName: document.getElementById('trav-name'),
+      addAge: document.getElementById('trav-age'),
+      addId: document.getElementById('trav-id'),
+      tableBody: document.querySelector('#travellers-table tbody'),
+      msg: document.getElementById('book-msg'),
+    };
+    this.buttons = {
+      addTraveller: document.getElementById('btn-add-traveller'),
+      clearSelection: document.getElementById('btn-clear-selection'),
+      book: document.getElementById('btn-book'),
+      view: document.getElementById('btn-view-trips'),
+    };
+    this.viewInputs = {
+      lastName: document.getElementById('view-lastname'),
+      govId: document.getElementById('view-id'),
+      upTbody: document.querySelector('#trips-upcoming tbody'),
+      hiTbody: document.querySelector('#trips-history tbody'),
+    };
+    this.bind();
+  }
+
+  bind() {
+    this.buttons.addTraveller?.addEventListener('click', () => this.addTravellerFromInputs());
+    this.buttons.clearSelection?.addEventListener('click', () => this.clearSelection());
+    this.buttons.book?.addEventListener('click', () => this.bookTrip());
+    this.buttons.view?.addEventListener('click', () => this.viewTrips());
+    this.inputs.fare?.addEventListener('change', () => (this.fareClass = this.inputs.fare.value));
+    document.addEventListener('itinerary:selected', (e) => {
+      this.setSelection(e.detail.itinerary);
+    });
+  }
+
+  setSelection(itinerary) {
+    this.selectedItinerary = itinerary;
+    this.selectedKey = BookingSystem.keyForItinerary(itinerary);
+    const summary = BookingSystem.humanSummary(itinerary);
+    if (this.inputs.selection) this.inputs.selection.value = summary;
+    this.info('Selected itinerary.');
+  }
+
+  clearSelection() {
+    this.selectedItinerary = null;
+    this.selectedKey = null;
+    if (this.inputs.selection) this.inputs.selection.value = '';
+  }
+
+  addTravellerFromInputs() {
+    const name = (this.inputs.addName?.value || '').trim();
+    const age = parseInt(this.inputs.addAge?.value || '0', 10);
+    const govId = (this.inputs.addId?.value || '').trim();
+    if (!name || !govId || !(age >= 0)) return this.error('Provide traveller name, age, and ID.');
+    // Enforce single reservation per client per selected connection
+    if (this.selectedKey && this.travellers.some(t => t.id.toLowerCase() === govId.toLowerCase())) {
+      return this.error('This traveller is already in this booking.');
+    }
+    this.travellers.push({ name, age, id: govId });
+    this.inputs.addName.value = '';
+    this.inputs.addAge.value = '';
+    this.inputs.addId.value = '';
+    this.renderTravellers();
+  }
+
+  removeTraveller(idx) {
+    this.travellers.splice(idx, 1);
+    this.renderTravellers();
+  }
+
+  renderTravellers() {
+    const tb = this.inputs.tableBody;
+    if (!tb) return;
+    tb.innerHTML = '';
+    this.travellers.forEach((t, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i+1}</td><td>${t.name}</td><td>${t.age}</td><td>${t.id}</td><td><button class="secondary" data-remove="${i}">Remove</button></td>`;
+      tb.appendChild(tr);
+    });
+    tb.querySelectorAll('button[data-remove]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const i = parseInt(btn.getAttribute('data-remove'), 10);
+        this.removeTraveller(i);
+      });
+    });
+  }
+
+  validate() {
+    if (!this.selectedItinerary) return 'Select an itinerary from results first.';
+    const dateISO = this.inputs.date?.value;
+    if (!dateISO) return 'Pick a travel date.';
+    if (!this.travellers.length) return 'Add at least one traveller.';
+    return null;
+  }
+
+  bookTrip() {
+    const err = this.validate();
+    if (err) return this.error(err);
+    const dateISO = this.inputs.date.value;
+    // Uniqueness: for a given connection (itineraryKey) a client may only have a single reservation under their name.
+    // Enforce within the same trip build (we already avoid duplicates in this.travellers).
+    const tripId = BookingSystem.randomAlphaId();
+    const trip = new Trip(tripId, dateISO, this.selectedItinerary, this.fareClass);
+
+    for (const t of this.travellers) {
+      const reservationId = BookingSystem.uuid4();
+      const res = new Reservation(reservationId, t, this.selectedKey, this.fareClass);
+      trip.addReservation(res);
+      const ticketNum = BookingSystem.randomTicketNumber();
+      trip.addTicket(new Ticket(ticketNum, reservationId));
+    }
+
+    BookingStorage.pushTrip(trip);
+    this.info(`Trip booked! Trip ID ${trip.tripId} with ${trip.reservations.length} reservation(s).`);
+    // Reset panel
+    this.travellers = [];
+    this.renderTravellers();
+    this.clearSelection();
+  }
+
+  static keyForItinerary(it) {
+    // Create a stable key based on leg cities and times
+    const parts = it.legs.map(l => `${l.dep_city}-${l.arr_city}-${l.dep_time.h}:${l.dep_time.m}-${l.arr_time.h}:${l.arr_time.m}`);
+    return parts.join('|');
+  }
+
+  static humanSummary(it) {
+    const first = it.legs[0];
+    const last = it.legs[it.legs.length-1];
+    return `${first.dep_city} ${String(first.dep_time.h).padStart(2,'0')}:${String(first.dep_time.m).padStart(2,'0')} → ${last.arr_city} ${String(last.arr_time.h).padStart(2,'0')}:${String(last.arr_time.m).padStart(2,'0')} (${it.legs.length-1} stop${it.legs.length-1===1?'':'s'})`;
+  }
+
+  static randomTicketNumber() {
+    return Math.floor(100000000 + Math.random() * 900000000); // 9-digit numeric
+  }
+  static randomAlphaId() {
+    return Math.random().toString(36).slice(2, 6).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+  }
+  static uuid4() {
+    // Simple UUIDv4
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = (Math.random() * 16) | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  info(msg) { if (this.inputs.msg) this.inputs.msg.innerHTML = `<span class="ok">${msg}</span>`; }
+  error(msg) { if (this.inputs.msg) this.inputs.msg.innerHTML = `<span class="error">${msg}</span>`; }
+
+  viewTrips() {
+    const lastName = (this.viewInputs.lastName?.value || '').trim();
+    const govId = (this.viewInputs.govId?.value || '').trim();
+    if (!lastName || !govId) return;
+    const trips = BookingStorage.findByLastNameAndId(lastName, govId);
+    const now = new Date();
+    const upRows = [];
+    const hiRows = [];
+    for (const t of trips) {
+      const date = new Date(t.dateISO + 'T00:00:00');
+      const isHistory = date < new Date(now.toDateString());
+      const rowHtml = BookingSystem.renderTripRow(t);
+      (isHistory ? hiRows : upRows).push(rowHtml);
+    }
+    this.viewInputs.upTbody.innerHTML = upRows.join('') || `<tr><td colspan="5" class="muted">No upcoming trips.</td></tr>`;
+    this.viewInputs.hiTbody.innerHTML = hiRows.join('') || `<tr><td colspan="5" class="muted">No past trips.</td></tr>`;
+  }
+
+  static renderTripRow(t) {
+    const pax = t.reservations.map(r => r.passenger.name).join(', ');
+    const itin = BookingSystem.humanSummary(t.itinerary);
+    const tickets = t.tickets.map(tk => `<span class="badge">#${tk.id}</span>`).join(' ');
+    return `<tr><td class="nowrap">${t.tripId}</td><td>${t.dateISO}</td><td>${pax}</td><td>${itin}</td><td>${tickets}</td></tr>`;
+  }
+}

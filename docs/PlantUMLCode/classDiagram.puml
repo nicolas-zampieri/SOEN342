@@ -118,6 +118,74 @@ class RailSearchApp {
   +handleExport()
 }
 
+' ==== Booking Domain (Iteration 2) ====
+class Ticket {
+  +id : int
+  +reservationId : string
+}
+
+class Reservation {
+  +reservationId : string
+  +passenger : Passenger
+  +itineraryKey : string
+  +fareClass : string
+}
+
+class Trip {
+  +tripId : string
+  +dateISO : string
+  +itinerary : Itinerary
+  +fareClass : string
+  +reservations : List<Reservation>
+  +tickets : List<Ticket>
+  +createdAt : string
+  +addReservation(res : Reservation)
+  +addTicket(ticket : Ticket)
+}
+
+class Passenger {
+  +name : string
+  +age : int
+  +id : string
+}
+
+class BookingStorage {
+  +{static} STORAGE_KEY : string
+  +{static} loadAll() : Trip[]
+  +{static} saveAll(trips : Trip[])
+  +{static} pushTrip(trip : Trip)
+  +{static} findByLastNameAndId(lastName : string, govId : string) : Trip[]
+}
+
+class BookingSystem {
+  -renderer : ResultRenderer
+  -selectedItinerary : Itinerary
+  -selectedKey : string
+  -travellers : List<Passenger>
+  -dateISO : string
+  -fareClass : string
+  -inputs
+  -buttons
+  -viewInputs
+  +bind()
+  +setSelection(itinerary : Itinerary)
+  +clearSelection()
+  +addTravellerFromInputs()
+  +removeTraveller(idx : int)
+  +renderTravellers()
+  +validate() : string
+  +bookTrip()
+  +viewTrips()
+  +{static} keyForItinerary(itin : Itinerary) : string
+  +{static} humanSummary(itin : Itinerary) : string
+  +{static} randomTicketNumber() : int
+  +{static} randomAlphaId() : string
+  +{static} uuid4() : string
+  +{static} renderTripRow(trip : Trip) : string
+  +info(msg : string)
+  +error(msg : string)
+}
+
 ' ==== Associations / Dependencies ====
 Itinerary --> Route
 Route -->TimeOfDay 
@@ -139,5 +207,23 @@ TimeUtils --> TimeOfDay
 RailSearchApp --> CSVLoader
 RailSearchApp --> ResultRenderer
 RailSearchApp --> ItineraryService
+RailSearchApp --> BookingSystem
+
+' Booking System Relationships
+Trip "1" *-- "1..*" Reservation : contains
+Trip "1" *-- "1..*" Ticket : contains
+Trip "1" --> "1" Itinerary : references
+Reservation "1" --> "1" Passenger : for
+Reservation "1" --> "1" Class : fareClass
+Ticket "1" --> "1" Reservation : documents
+
+BookingSystem --> Trip : creates
+BookingSystem --> Reservation : creates
+BookingSystem --> Ticket : generates
+BookingSystem --> BookingStorage : uses
+BookingSystem --> ResultRenderer : uses
+BookingSystem --> Itinerary : selects
+
+BookingStorage --> Trip : persists
 
 @enduml
